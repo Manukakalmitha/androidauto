@@ -205,7 +205,7 @@ export default function App() {
           <div className={`transition-all duration-700 ease-in-out relative rounded-[3rem] overflow-hidden border border-white/5 bg-[#121212] ${activeTab === 'maps' ? 'flex-[2.5]' : 'flex-1'}`}>
             <gmp-map
               ref={mapRef}
-              center={currentCoords ? `${currentCoords.latitude},${currentCoords.longitude}` : "40.749933,-73.98633"}
+              center={currentCoords ? { lat: currentCoords.latitude, lng: currentCoords.longitude } : { lat: 40.749933, lng: -73.98633 }}
               zoom="13"
               map-id="DEMO_MAP_ID"
               style={{ width: '100%', height: '100%', '--gmp-font-family': 'Inter, sans-serif' }}
