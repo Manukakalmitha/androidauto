@@ -164,64 +164,108 @@ export default function App() {
     await supabase.auth.signOut();
   };
 
+  // --- Spotify Unified State Normalization ---
+  const normalizePlaybackState = (rawState) => {
+    if (!rawState) return null;
+
+    // Check if it's SDK state (contains track_window)
+    if (rawState.track_window) {
+      const track = rawState.track_window.current_track;
+      return {
+        item: track ? {
+          id: track.id,
+          name: track.name,
+          duration_ms: rawState.duration,
+          artists: track.artists.map(a => ({ name: a.name })),
+          album: { images: track.album.images.map(img => ({ url: img.url })) },
+          uri: track.uri
+        } : null,
+        progress_ms: rawState.position,
+        is_playing: !rawState.paused,
+        shuffle_state: rawState.shuffle,
+        repeat_state: rawState.repeat_mode === 0 ? 'off' : (rawState.repeat_mode === 1 ? 'context' : 'track'),
+        is_sdk: true
+      };
+    }
+
+    // Otherwise treat as Web API state (contains item)
+    return {
+      item: rawState.item,
+      progress_ms: rawState.progress_ms,
+      is_playing: rawState.is_playing,
+      shuffle_state: rawState.shuffle_state,
+      repeat_state: rawState.repeat_state,
+      is_sdk: false
+    };
+  };
+
   // --- Spotify Web Playback SDK Integration ---
   useEffect(() => {
     if (!spotifyToken) return;
 
     // Remove existing script if any to avoid duplication
     const existingScript = document.getElementById('spotify-player-sdk');
-    if (existingScript) existingScript.remove();
-
-    const script = document.createElement("script");
-    script.id = 'spotify-player-sdk';
-    script.src = "https://sdk.scdn.co/spotify-player.js";
-    script.async = true;
-    document.body.appendChild(script);
+    if (!existingScript) {
+      const script = document.createElement("script");
+      script.id = 'spotify-player-sdk';
+      script.src = "https://sdk.scdn.co/spotify-player.js";
+      script.async = true;
+      document.body.appendChild(script);
+    }
 
     window.onSpotifyWebPlaybackSDKReady = () => {
-      const player = new window.Spotify.Player({
-        name: 'Android Auto Dashboard',
-        getOAuthToken: cb => { cb(spotifyToken); },
-        volume: 0.5
-      });
+      if (window.Spotify && !spotifyPlayer) {
+        const player = new window.Spotify.Player({
+          name: 'Android Auto Dashboard',
+          getOAuthToken: cb => {
+            if (typeof spotifyToken === 'string' && spotifyToken.length > 0) {
+              cb(spotifyToken);
+            } else {
+              console.warn("Spotify SDK: Token not ready yet.");
+            }
+          },
+          volume: 0.5
+        });
 
-      player.addListener('initial_state_error', ({ message }) => { console.error("Initial State Error:", message); });
-      player.addListener('authentication_error', ({ message }) => { console.error("Auth Error:", message); });
-      player.addListener('account_error', ({ message }) => { console.error("Account Error:", message); });
-      player.addListener('playback_error', ({ message }) => { console.error("Playback Error:", message); });
+        player.addListener('initial_state_error', ({ message }) => { console.error("Initial State Error:", message); });
+        player.addListener('authentication_error', ({ message }) => { console.error("Auth Error:", message); });
+        player.addListener('account_error', ({ message }) => { console.error("Account Error:", message); });
+        player.addListener('playback_error', ({ message }) => { console.error("Playback Error:", message); });
 
-      player.addListener('ready', ({ device_id }) => {
-        console.log('Spotify SDK: Ready with Device ID', device_id);
-        setDeviceId(device_id);
-        setIsPlayerReady(true);
-      });
+        player.addListener('ready', ({ device_id }) => {
+          console.log('Spotify SDK: Ready with Device ID', device_id);
+          setDeviceId(device_id);
+          setIsPlayerReady(true);
+        });
 
-      player.addListener('not_ready', ({ device_id }) => {
-        console.log('Spotify SDK: Device ID has gone offline', device_id);
-        setIsPlayerReady(false);
-      });
+        player.addListener('not_ready', ({ device_id }) => {
+          console.log('Spotify SDK: Device ID has gone offline', device_id);
+          setIsPlayerReady(false);
+        });
 
-      player.addListener('player_state_changed', state => {
-        if (!state) return;
-        setPlaybackState(state);
-      });
+        player.addListener('player_state_changed', state => {
+          if (!state) return;
+          setPlaybackState(normalizePlaybackState(state));
+        });
 
-      player.connect();
-      setSpotifyPlayer(player);
+        player.connect();
+        setSpotifyPlayer(player);
+      }
     };
 
     return () => {
-      if (spotifyPlayer) spotifyPlayer.disconnect();
-      const s = document.getElementById('spotify-player-sdk');
-      if (s) s.remove();
+      // Don't disconnect here to maintain background play if navigating within React
+      // Only cleanup script reference to prevent leaks
     };
-  }, [spotifyToken]);
+  }, [spotifyToken, spotifyPlayer]);
 
   useEffect(() => {
     if (spotifyToken) {
       const interval = setInterval(() => {
         spotifyApi.getMyCurrentPlaybackState().then(state => {
-          setPlaybackState(state);
+          if (state && state.item) {
+            setPlaybackState(normalizePlaybackState(state));
+          }
         }).catch(err => console.error("Spotify playback error:", err));
       }, 3000);
       return () => clearInterval(interval);
@@ -247,6 +291,16 @@ export default function App() {
       mapEl.zoom = 13;
     }
   }, [currentCoords]);
+  useEffect(() => {
+    const picker = pickerRef.current;
+    if (picker) {
+      const listener = (event) => {
+        handlePlaceChange(event);
+      };
+      picker.addEventListener('gmpx-placechange', listener);
+      return () => { picker && picker.removeEventListener('gmpx-placechange', listener); };
+    }
+  }, [pickerRef.current]);
 
   const handlePlaceChange = (e) => {
     const picker = e.target;
@@ -402,6 +456,7 @@ export default function App() {
         <div className="flex-[1.8] relative rounded-[3.5rem] overflow-hidden border border-white/5 bg-[#121212] premium-shadow">
           <gmp-map
             ref={mapRef}
+            id="main-map"
             map-id="DEMO_MAP_ID"
             style={{ width: '100%', height: '100%', '--gmp-font-family': 'Inter, sans-serif' }}
           >
@@ -412,13 +467,13 @@ export default function App() {
           <div className="absolute top-8 left-8 w-[440px] max-h-[calc(100%-64px)] pointer-events-none flex flex-col gap-4 z-50">
             <div className="bg-black/80 backdrop-blur-[40px] rounded-[3rem] border border-white/10 shadow-[0_40px_100px_rgba(0,0,0,0.6)] pointer-events-auto overflow-hidden flex flex-col">
               <div className="p-8 border-b border-white/5 flex flex-col gap-6">
-                <div className="flex items-center gap-4 bg-white/5 p-5 rounded-3xl border border-white/5 focus-within:border-blue-500/50 transition-all">
-                  <Navigation size={24} className="text-blue-500" />
+                <div className="flex items-center gap-4 bg-white/5 p-2 rounded-3xl border border-white/5 focus-within:border-blue-500/50 transition-all">
+                  <Navigation size={24} className="text-blue-500 ml-4" />
                   <div className="flex-1">
-                    <PlacePicker
+                    <gmpx-place-picker
                       ref={pickerRef}
                       placeholder="Where to?"
-                      onPlaceChange={handlePlaceChange}
+                      for-map="main-map"
                       style={{
                         width: '100%',
                         '--gmpx-color-surface': 'transparent',
@@ -426,7 +481,7 @@ export default function App() {
                         '--gmpx-border-radius': '0',
                         '--gmpx-font-family': 'Inter, sans-serif'
                       }}
-                    />
+                    ></gmpx-place-picker>
                   </div>
                 </div>
 
