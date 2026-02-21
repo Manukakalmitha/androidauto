@@ -272,10 +272,10 @@ export default function App() {
           name: 'Android Auto Dashboard',
           getOAuthToken: cb => {
             const currentToken = tokenRef.current || spotifyToken;
-            if (currentToken) {
+            if (typeof currentToken === 'string' && currentToken.length > 0) {
               cb(currentToken);
             } else {
-              console.warn("Spotify SDK: Token ref empty, cannot authorize.");
+              console.warn("Spotify SDK: Invalid or empty token for authorization.");
             }
           },
           volume: 0.5
@@ -343,13 +343,21 @@ export default function App() {
         setPlaylists(data.items);
       }).catch(err => console.error("Error fetching playlists:", err));
 
-      // Fetch Queue for "Up Next"
-      const fetchQueue = () => {
-        spotifyApi.getUserQueue().then(data => {
-          if (data?.queue?.[0]) {
-            setUpNext(data.queue[0]);
+      // Fetch Queue for "Up Next" (Manual fetch because library method is missing)
+      const fetchQueue = async () => {
+        try {
+          const response = await fetch('https://api.spotify.com/v1/me/player/queue', {
+            headers: { 'Authorization': `Bearer ${tokenRef.current || spotifyToken}` }
+          });
+          if (response.ok) {
+            const data = await response.json();
+            if (data?.queue?.[0]) {
+              setUpNext(data.queue[0]);
+            }
           }
-        }).catch(err => console.error("Error fetching queue:", err));
+        } catch (err) {
+          console.error("Error fetching queue manually:", err);
+        }
       };
       fetchQueue();
       const qInterval = setInterval(fetchQueue, 15000);
@@ -490,7 +498,7 @@ export default function App() {
   return (
     <div className="h-screen w-screen bg-black text-white flex overflow-hidden font-sans select-none antialiased">
 
-      {/* Component Library Loader */}
+      {/* Component Library Loader (v2 uses solutionChannel for compatibility) */}
       <APILoader apiKey={GOOGLE_MAPS_API_KEY} solutionChannel="GMP_GE_mapsandplacesautocomplete_v2" />
 
       {/* Left Vertical Navigation Bar */}
