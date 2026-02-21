@@ -67,6 +67,9 @@ export default function App() {
   const [routes, setRoutes] = useState([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
   const [navigationSteps, setNavigationSteps] = useState([]);
+  const [spotifyPlayer, setSpotifyPlayer] = useState(null);
+  const [deviceId, setDeviceId] = useState(null);
+  const [isPlayerReady, setIsPlayerReady] = useState(false);
 
   // Refs for Maps Components
   const mapRef = useRef(null);
@@ -142,6 +145,72 @@ export default function App() {
     });
     if (error) console.error("Login error:", error);
   };
+
+  const transferPlayback = async () => {
+    if (deviceId) {
+      spotifyApi.transferMyPlayback([deviceId], { play: true }).catch(err => {
+        console.error("Transfer error:", err);
+        alert("Failed to activate dashboard player. Make sure you have Spotify Premium.");
+      });
+    }
+  };
+
+  const logoutFromSpotify = async () => {
+    await supabase.auth.signOut();
+  };
+
+  // --- Spotify Web Playback SDK Integration ---
+  useEffect(() => {
+    if (!spotifyToken) return;
+
+    // Remove existing script if any to avoid duplication
+    const existingScript = document.getElementById('spotify-player-sdk');
+    if (existingScript) existingScript.remove();
+
+    const script = document.createElement("script");
+    script.id = 'spotify-player-sdk';
+    script.src = "https://sdk.scdn.co/spotify-player.js";
+    script.async = true;
+    document.body.appendChild(script);
+
+    window.onSpotifyWebPlaybackSDKReady = () => {
+      const player = new window.Spotify.Player({
+        name: 'Android Auto Dashboard',
+        getOAuthToken: cb => { cb(spotifyToken); },
+        volume: 0.5
+      });
+
+      player.addListener('initial_state_error', ({ message }) => { console.error("Initial State Error:", message); });
+      player.addListener('authentication_error', ({ message }) => { console.error("Auth Error:", message); });
+      player.addListener('account_error', ({ message }) => { console.error("Account Error:", message); });
+      player.addListener('playback_error', ({ message }) => { console.error("Playback Error:", message); });
+
+      player.addListener('ready', ({ device_id }) => {
+        console.log('Spotify SDK: Ready with Device ID', device_id);
+        setDeviceId(device_id);
+        setIsPlayerReady(true);
+      });
+
+      player.addListener('not_ready', ({ device_id }) => {
+        console.log('Spotify SDK: Device ID has gone offline', device_id);
+        setIsPlayerReady(false);
+      });
+
+      player.addListener('player_state_changed', state => {
+        if (!state) return;
+        setPlaybackState(state);
+      });
+
+      player.connect();
+      setSpotifyPlayer(player);
+    };
+
+    return () => {
+      if (spotifyPlayer) spotifyPlayer.disconnect();
+      const s = document.getElementById('spotify-player-sdk');
+      if (s) s.remove();
+    };
+  }, [spotifyToken]);
 
   useEffect(() => {
     if (spotifyToken) {
@@ -584,11 +653,26 @@ export default function App() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex-1 flex flex-col items-center justify-center space-y-4">
-                      <div className="w-20 h-20 bg-zinc-900 rounded-full flex items-center justify-center text-zinc-700">
-                        <Play size={40} />
+                    <div className="flex-1 flex flex-col items-center justify-center space-y-6">
+                      <div className="w-24 h-24 bg-zinc-900/50 rounded-full flex items-center justify-center relative">
+                        {isPlayerReady && (
+                          <div className="absolute inset-0 bg-green-500/10 blur-[30px] rounded-full animate-pulse" />
+                        )}
+                        <Play size={44} className={isPlayerReady ? 'text-green-500' : 'text-zinc-700'} />
                       </div>
-                      <p className="text-zinc-600 text-sm font-bold uppercase tracking-[0.2em]">Open Spotify on Device</p>
+                      <div className="space-y-4">
+                        <p className="text-zinc-500 text-xs font-black uppercase tracking-[0.3em]">
+                          {isPlayerReady ? 'Dashboard Player Ready' : 'Open Spotify on Device'}
+                        </p>
+                        {isPlayerReady && (
+                          <button
+                            onClick={transferPlayback}
+                            className="px-8 py-3 bg-white text-black font-black text-[10px] uppercase tracking-widest rounded-full hover:scale-105 active:scale-95 transition-all shadow-xl"
+                          >
+                            ACTIVATE PLAYER
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
