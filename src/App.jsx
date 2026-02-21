@@ -50,6 +50,36 @@ const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// --- Helper Components ---
+const MarqueeText = ({ text, className }) => {
+  return (
+    <div className={`overflow-hidden whitespace-nowrap relative ${className}`}>
+      <motion.div
+        animate={{ x: [0, -100, 0] }}
+        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+        className="inline-block"
+      >
+        {text}
+      </motion.div>
+    </div>
+  );
+};
+
+const Visualizer = ({ isPlaying }) => {
+  return (
+    <div className="flex items-end gap-1 h-8">
+      {[...Array(4)].map((_, i) => (
+        <motion.div
+          key={i}
+          animate={isPlaying ? { height: [8, 24, 12, 32, 8] } : { height: 8 }}
+          transition={{ duration: 1.2, repeat: Infinity, delay: i * 0.1, ease: "easeInOut" }}
+          className="w-1.5 bg-green-500 rounded-full"
+        />
+      ))}
+    </div>
+  );
+};
+
 export default function App() {
   // --- Auth & Config State ---
   const [spotifyToken, setSpotifyToken] = useState(null);
@@ -76,6 +106,8 @@ export default function App() {
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [playlists, setPlaylists] = useState([]);
   const [showSpotifyBrowser, setShowSpotifyBrowser] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
+  const [upNext, setUpNext] = useState(null);
 
   // Refs for Maps Components
   const mapRef = useRef(null);
@@ -148,7 +180,7 @@ export default function App() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'spotify',
       options: {
-        scopes: 'user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-library-read',
+        scopes: 'user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-library-read user-library-modify',
         redirectTo: window.location.origin
       }
     });
@@ -162,6 +194,31 @@ export default function App() {
         alert("Failed to activate dashboard player. Make sure you have Spotify Premium.");
       });
     }
+  };
+
+  const toggleLike = async () => {
+    if (!playbackState?.item) return;
+    try {
+      if (isLiked) {
+        await spotifyApi.removeFromMySavedTracks([playbackState.item.id]);
+      } else {
+        await spotifyApi.addToMySavedTracks([playbackState.item.id]);
+      }
+      setIsLiked(!isLiked);
+    } catch (e) {
+      console.error("Error toggling like:", e);
+      setIsLiked(!isLiked); // Optimistic UI toggle
+    }
+  };
+
+  const handleSeek = (e) => {
+    if (!playbackState?.item) return;
+    const bar = e.currentTarget;
+    const rect = bar.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const percent = x / rect.width;
+    const seekMs = Math.round(percent * playbackState.item.duration_ms);
+    spotifyApi.seek(seekMs).catch(err => console.error("Seek error:", err));
   };
 
   const logoutFromSpotify = async () => {
@@ -285,8 +342,20 @@ export default function App() {
       spotifyApi.getUserPlaylists().then(data => {
         setPlaylists(data.items);
       }).catch(err => console.error("Error fetching playlists:", err));
+
+      // Fetch Queue for "Up Next"
+      const fetchQueue = () => {
+        spotifyApi.getUserQueue().then(data => {
+          if (data?.queue?.[0]) {
+            setUpNext(data.queue[0]);
+          }
+        }).catch(err => console.error("Error fetching queue:", err));
+      };
+      fetchQueue();
+      const qInterval = setInterval(fetchQueue, 15000);
+      return () => clearInterval(qInterval);
     }
-  }, [spotifyToken]);
+  }, [spotifyToken, playbackState?.item?.id]);
 
   // --- Google Maps Logic ---
   useEffect(() => {
@@ -605,9 +674,11 @@ export default function App() {
           {/* Dynamic Full-Bleed Background Overlay */}
           {playbackState?.item && (
             <div
-              className="absolute inset-0 opacity-60 transition-all duration-1000 pointer-events-none"
+              className="absolute inset-0 opacity-40 transition-all duration-1000 pointer-events-none"
               style={{
-                background: `linear-gradient(180deg, #${playbackState.item.id ? playbackState.item.id.slice(0, 6) : '1db954'}cc 0%, #000 100%)`
+                background: `radial-gradient(circle at 20% 20%, #${playbackState.item.id ? playbackState.item.id.slice(0, 6) : '1db954'}cc 0%, transparent 50%),
+                             radial-gradient(circle at 80% 80%, #000 0%, #000 100%),
+                             linear-gradient(180deg, rgba(0,0,0,0.8) 0%, #000 100%)`
               }}
             />
           )}
@@ -658,16 +729,57 @@ export default function App() {
                         <div className="space-y-10">
                           <motion.div
                             layoutId="art"
-                            className="w-full aspect-square rounded-[3.5rem] overflow-hidden shadow-[0_50px_100px_rgba(0,0,0,0.8)] border border-white/10 relative group mx-auto max-w-[400px]"
+                            className="w-full aspect-square rounded-[3.5rem] overflow-hidden shadow-[0_50px_100px_rgba(0,0,0,0.8)] border border-white/10 relative group mx-auto max-w-[420px]"
                           >
                             <img src={playbackState.item.album.images[0].url} alt="Cover" className="w-full h-full object-cover transition-transform duration-[2000ms] group-hover:scale-110" />
                             <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-all pointer-events-none" />
+
+                            {/* In-Art Visualizer */}
+                            <div className="absolute bottom-10 left-10 z-20">
+                              <Visualizer isPlaying={playbackState.is_playing} />
+                            </div>
                           </motion.div>
 
-                          <div className="space-y-3 text-center">
-                            <h1 className="text-5xl font-black text-white tracking-tight leading-tight line-clamp-1">{playbackState.item.name}</h1>
-                            <p className="text-2xl font-bold text-white/40 tracking-tight">{playbackState.item.artists[0].name}</p>
+                          <div className="space-y-4 px-6 relative">
+                            <div className="flex justify-between items-start gap-8">
+                              <div className="flex-1 min-w-0 text-left">
+                                <h1 className="text-5xl font-black text-white tracking-tight leading-tight whitespace-nowrap overflow-hidden">
+                                  {playbackState.item.name.length > 20 ? (
+                                    <motion.div
+                                      animate={{ x: [0, -100, 0] }}
+                                      transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+                                    >
+                                      {playbackState.item.name}
+                                    </motion.div>
+                                  ) : playbackState.item.name}
+                                </h1>
+                                <p className="text-2xl font-bold text-white/40 tracking-tight mt-2">{playbackState.item.artists[0].name}</p>
+                              </div>
+                              <button
+                                onClick={toggleLike}
+                                className={`mt-2 transition-all duration-300 ${isLiked ? 'text-green-500 scale-125' : 'text-white/20 hover:text-white'}`}
+                              >
+                                <Heart size={44} fill={isLiked ? "currentColor" : "none"} strokeWidth={2.5} />
+                              </button>
+                            </div>
                           </div>
+
+                          {/* Up Next Preview */}
+                          {upNext && !showSpotifyBrowser && (
+                            <motion.div
+                              initial={{ opacity: 0, y: 10 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              className="px-6 py-4 bg-white/5 rounded-3xl border border-white/5 flex items-center justify-between"
+                            >
+                              <div className="flex flex-col gap-0.5 min-w-0">
+                                <span className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em]">Up Next</span>
+                                <span className="text-sm font-bold text-white/60 truncate">{upNext.name} • {upNext.artists[0].name}</span>
+                              </div>
+                              <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 border border-white/10 opacity-60">
+                                <img src={upNext.album.images[0].url} alt="" className="w-full h-full object-cover" />
+                              </div>
+                            </motion.div>
+                          )}
                         </div>
                       ) : (
                         <div className="flex-1 flex flex-col items-center justify-center gap-10">
@@ -733,12 +845,20 @@ export default function App() {
 
               {/* Persistent Playback Footer */}
               {playbackState?.item && (
-                <div className="pt-12 space-y-12">
-                  <div className="space-y-5">
-                    <div className="h-2.5 bg-white/10 rounded-full overflow-hidden relative">
+                <div className="pt-10 space-y-10">
+                  <div className="space-y-6">
+                    <div
+                      onClick={handleSeek}
+                      className="h-3 bg-white/10 rounded-full overflow-hidden relative cursor-pointer group"
+                    >
                       <motion.div
-                        className="h-full bg-white shadow-[0_0_25px_rgba(255,255,255,0.4)]"
+                        className="h-full bg-white shadow-[0_0_25px_rgba(255,255,255,0.4)] group-hover:bg-green-500 transition-colors"
                         animate={{ width: `${(playbackState.progress_ms / playbackState.item.duration_ms) * 100}%` }}
+                      />
+                      {/* Interaction Thumb */}
+                      <motion.div
+                        className="absolute h-6 w-6 bg-white rounded-full -top-1.5 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity"
+                        animate={{ left: `calc(${(playbackState.progress_ms / playbackState.item.duration_ms) * 100}% - 12px)` }}
                       />
                     </div>
                     <div className="flex justify-between text-[11px] font-black text-white/30 tracking-[0.2em]">
