@@ -23,7 +23,10 @@ import {
   Bike,
   BusFront,
   Footprints,
-  History
+  History,
+  Shuffle,
+  Repeat,
+  Heart
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SpotifyWebApi from 'spotify-web-api-js';
@@ -584,9 +587,19 @@ export default function App() {
           <div className={`transition-all duration-700 ease-in-out flex flex-col gap-2 ${activeTab === 'maps' ? 'flex-1' : 'flex-[2]'}`}>
 
             {/* Functional Spotify Card */}
-            <div className="flex-1 rounded-[3rem] bg-[#050505] border border-white/5 overflow-hidden flex flex-col p-10 premium-shadow relative group">
+            <div className={`flex-1 rounded-[3rem] border border-white/5 overflow-hidden flex flex-col p-10 premium-shadow relative group transition-all duration-1000 ${playbackState?.item ? 'bg-gradient-to-br from-[#121212] via-[#080808] to-black' : 'bg-[#050505]'}`}>
+              {/* Dynamic Glow Overlay */}
+              {playbackState?.item && (
+                <div
+                  className="absolute inset-0 opacity-20 pointer-events-none transition-all duration-1000"
+                  style={{
+                    background: `radial-gradient(circle at 50% 30%, ${playbackState.item.id ? '#' + playbackState.item.id.slice(0, 6) : '#1db954'}44 0%, transparent 70%)`
+                  }}
+                />
+              )}
+
               {!spotifyToken ? (
-                <div className="flex-1 flex flex-col items-center justify-center space-y-10 text-center">
+                <div className="flex-1 flex flex-col items-center justify-center space-y-10 text-center relative z-10">
                   <div className="relative">
                     <div className="absolute inset-0 bg-green-500/20 blur-[50px] rounded-full animate-pulse" />
                     <div className="w-28 h-28 bg-zinc-900 border border-white/5 rounded-full flex items-center justify-center relative z-10">
@@ -609,47 +622,82 @@ export default function App() {
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-3">
                       <SpotifyLogo size={32} />
-                      <span className="text-[10px] font-black text-green-500 tracking-[0.3em] uppercase">Connected</span>
+                      <span className="text-[10px] font-black text-green-500 tracking-[0.3em] uppercase">
+                        {isPlayerReady ? 'Dashboard Player' : 'Connected'}
+                      </span>
                     </div>
-                    <button onClick={() => setSpotifyToken(null)} className="text-zinc-600 hover:text-white"><LogOut size={20} /></button>
+                    <div className="flex items-center gap-4">
+                      <button className="text-zinc-600 hover:text-white transition-colors"><Heart size={20} /></button>
+                      <button onClick={logoutFromSpotify} className="text-zinc-600 hover:text-white transition-colors"><LogOut size={20} /></button>
+                    </div>
                   </div>
 
                   {playbackState?.item ? (
-                    <div className="space-y-8">
-                      <motion.div
-                        layoutId="albumArt"
-                        className="w-48 h-48 mx-auto rounded-[3rem] overflow-hidden shadow-3xl border border-white/5"
-                      >
-                        <img src={playbackState.item.album.images[0].url} alt="Album" className="w-full h-full object-cover" />
-                      </motion.div>
-
-                      <div className="text-center space-y-1">
-                        <h3 className="font-black text-2xl text-white tracking-tight line-clamp-1">{playbackState.item.name}</h3>
-                        <p className="text-sm text-zinc-500 font-bold uppercase tracking-widest">{playbackState.item.artists[0].name}</p>
-                      </div>
-
-                      <div className="flex flex-col gap-3 px-4">
-                        <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                          <motion.div
-                            className="h-full bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.4)]"
-                            animate={{ width: `${(playbackState.progress_ms / playbackState.item.duration_ms) * 100}%` }}
-                          />
-                        </div>
-                        <div className="flex justify-between text-[10px] text-zinc-700 font-black tracking-widest">
-                          <span>{fmtMs(playbackState.progress_ms)}</span>
-                          <span>{fmtMs(playbackState.item.duration_ms)}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex justify-center items-center gap-10">
-                        <button onClick={() => spotifyApi.skipToPrevious()} className="text-zinc-500 hover:text-white transition-all active:scale-75"><SkipBack size={32} fill="currentColor" /></button>
-                        <button
-                          onClick={() => playbackState.is_playing ? spotifyApi.pause() : spotifyApi.play()}
-                          className="w-20 h-20 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 active:scale-90 transition-all shadow-3xl"
+                    <div className="flex-1 flex flex-col justify-center space-y-10">
+                      <div className="space-y-8">
+                        <motion.div
+                          layoutId="albumArt"
+                          className="w-64 h-64 mx-auto rounded-[2rem] overflow-hidden shadow-2xl border border-white/5 relative group/art"
                         >
-                          {playbackState.is_playing ? <Pause size={40} fill="currentColor" /> : <Play size={40} fill="currentColor" className="ml-2" />}
-                        </button>
-                        <button onClick={() => spotifyApi.skipToNext()} className="text-zinc-500 hover:text-white transition-all active:scale-75"><SkipForward size={32} fill="currentColor" /></button>
+                          <img src={playbackState.item.album.images[0].url} alt="Album" className="w-full h-full object-cover transition-transform duration-700 group-hover/art:scale-110" />
+                          <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/art:opacity-100 transition-opacity flex items-center justify-center">
+                            <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center">
+                              <Music2 className="text-white" size={32} />
+                            </div>
+                          </div>
+                        </motion.div>
+
+                        <div className="text-center space-y-2">
+                          <h3 className="font-black text-3xl text-white tracking-tight line-clamp-1">{playbackState.item.name}</h3>
+                          <p className="text-base text-zinc-400 font-bold uppercase tracking-widest leading-none">{playbackState.item.artists[0].name}</p>
+                        </div>
+
+                        <div className="flex flex-col gap-4 px-2">
+                          <div className="group/progress relative pt-2">
+                            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                              <motion.div
+                                className="h-full bg-white group-hover/progress:bg-green-500 transition-colors shadow-[0_0_15px_rgba(255,255,255,0.2)]"
+                                animate={{ width: `${(playbackState.progress_ms / playbackState.item.duration_ms) * 100}%` }}
+                              />
+                            </div>
+                            {/* Spotify Progress Thumb */}
+                            <motion.div
+                              className="absolute top-1.5 -ml-1.5 w-3 h-3 bg-white rounded-full opacity-0 group-hover/progress:opacity-100 transition-opacity shadow-lg"
+                              animate={{ left: `${(playbackState.progress_ms / playbackState.item.duration_ms) * 100}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-[11px] text-zinc-500 font-black tracking-widest">
+                            <span>{fmtMs(playbackState.progress_ms)}</span>
+                            <span>{fmtMs(playbackState.item.duration_ms)}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex justify-between items-center px-4">
+                          <button
+                            onClick={() => spotifyApi.setShuffle(!playbackState.shuffle_state)}
+                            className={`transition-all active:scale-75 ${playbackState.shuffle_state ? 'text-green-500' : 'text-zinc-600 hover:text-zinc-400'}`}
+                          >
+                            <Shuffle size={20} />
+                          </button>
+
+                          <div className="flex items-center gap-8">
+                            <button onClick={() => spotifyApi.skipToPrevious()} className="text-white hover:scale-110 transition-all active:scale-75"><SkipBack size={36} fill="white" /></button>
+                            <button
+                              onClick={() => playbackState.is_playing ? spotifyApi.pause() : spotifyApi.play()}
+                              className="w-20 h-20 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-2xl"
+                            >
+                              {playbackState.is_playing ? <Pause size={40} fill="black" /> : <Play size={40} fill="black" className="ml-2" />}
+                            </button>
+                            <button onClick={() => spotifyApi.skipToNext()} className="text-white hover:scale-110 transition-all active:scale-75"><SkipForward size={36} fill="white" /></button>
+                          </div>
+
+                          <button
+                            onClick={() => spotifyApi.setRepeat(playbackState.repeat_state === 'off' ? 'context' : 'off')}
+                            className={`transition-all active:scale-75 ${playbackState.repeat_state !== 'off' ? 'text-green-500' : 'text-zinc-600 hover:text-zinc-400'}`}
+                          >
+                            <Repeat size={20} />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ) : (
