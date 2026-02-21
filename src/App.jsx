@@ -61,6 +61,7 @@ export default function App() {
   const [travelMode, setTravelMode] = useState('DRIVING');
   const [routes, setRoutes] = useState([]);
   const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
+  const [navigationSteps, setNavigationSteps] = useState([]);
 
   // Refs for Maps Components
   const mapRef = useRef(null);
@@ -93,7 +94,12 @@ export default function App() {
     const hash = window.location.hash.substring(1);
     const params = new URLSearchParams(hash);
     const token = params.get('access_token');
-    if (token) {
+    const error = params.get('error');
+
+    if (error) {
+      console.error("Spotify Auth Error:", error);
+      alert(`Spotify Login Failed: ${error}`);
+    } else if (token) {
       setSpotifyToken(token);
       spotifyApi.setAccessToken(token);
       window.location.hash = ''; // Clear token from URL
@@ -104,6 +110,10 @@ export default function App() {
 
   // --- Spotify Functions ---
   const loginToSpotify = () => {
+    if (!SPOTIFY_CLIENT_ID || SPOTIFY_CLIENT_ID === 'YOUR_SPOTIFY_CLIENT_ID_HERE') {
+      alert("Spotify Client ID is not configured. Please add it to your .env file.");
+      return;
+    }
     const redirectUri = window.location.origin + '/';
     const scopes = [
       'user-read-playback-state',
@@ -206,8 +216,10 @@ export default function App() {
       provideRouteAlternatives: true
     }, (result, status) => {
       if (status === 'OK') {
-        setRoutes(result.routes);
+        const routeList = result.routes;
+        setRoutes(routeList);
         setSelectedRouteIndex(0);
+        setNavigationSteps(routeList[0].legs[0].steps);
         directionsRendererRef.current.setDirections(result);
         directionsRendererRef.current.setRouteIndex(0);
       }
@@ -216,6 +228,9 @@ export default function App() {
 
   const selectRoute = (index) => {
     setSelectedRouteIndex(index);
+    if (routes[index]) {
+      setNavigationSteps(routes[index].legs[0].steps);
+    }
     if (directionsRendererRef.current) {
       directionsRendererRef.current.setRouteIndex(index);
     }
@@ -234,6 +249,7 @@ export default function App() {
     }
     setIsNavigating(false);
     setSelectedPlace(null);
+    setNavigationSteps([]);
     if (markerRef.current) markerRef.current.position = null;
     if (pickerRef.current) pickerRef.current.value = null;
   };
@@ -360,6 +376,36 @@ export default function App() {
                     </div>
                     <p className="text-sm font-bold text-zinc-500 uppercase tracking-widest px-10 leading-relaxed">Search to start your journey</p>
                   </div>
+                ) : isNavigating ? (
+                  <div className="flex flex-col gap-6">
+                    <div className="flex items-center gap-4 mb-2">
+                      <div className="bg-blue-600 p-3 rounded-2xl">
+                        <Navigation size={24} className="text-white" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-black text-zinc-400 uppercase tracking-widest leading-none mb-1">Navigation Active</h4>
+                        <p className="text-lg font-black text-zinc-900 tracking-tight leading-tight">Heading to {selectedPlace.displayName || selectedPlace.name}</p>
+                      </div>
+                    </div>
+                    <div className="h-[1px] bg-zinc-100 w-full" />
+                    <div className="flex flex-col gap-4">
+                      {navigationSteps.length > 0 ? (
+                        navigationSteps.map((step, idx) => (
+                          <div key={idx} className="flex gap-4 p-4 rounded-2xl border border-zinc-50 bg-zinc-50/30">
+                            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-black text-xs shrink-0">
+                              {idx + 1}
+                            </div>
+                            <div className="flex flex-col gap-1">
+                              <p className="text-sm font-bold text-zinc-800 leading-snug" dangerouslySetInnerHTML={{ __html: step.instructions }} />
+                              <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">{step.distance.text} • {step.duration.text}</span>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-center text-zinc-400 text-xs font-bold uppercase tracking-widest p-10">Updating directions...</p>
+                      )}
+                    </div>
+                  </div>
                 ) : (
                   <div className="flex flex-col gap-4">
                     {routes.length > 0 ? (
@@ -410,19 +456,35 @@ export default function App() {
               )}
             </div>
 
-            {/* Float Stats Overlay */}
-            <div className="absolute bottom-8 left-8 flex gap-4 pointer-events-none z-10">
+            {/* Float Stats Overlay & Next Turn */}
+            <div className="absolute bottom-8 left-8 flex flex-col gap-4 pointer-events-none z-10 w-full max-w-lg">
+              {isNavigating && navigationSteps[0] && (
+                <motion.div
+                  initial={{ x: -100, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  className="bg-blue-600 p-8 rounded-[3rem] shadow-3xl text-white flex items-center gap-10 premium-shadow pointer-events-auto border border-blue-400/20"
+                >
+                  <div className="bg-white/10 p-5 rounded-[2rem] flex items-center justify-center shrink-0">
+                    <Navigation size={48} className="text-white rotate-45" />
+                  </div>
+                  <div>
+                    <h2 className="text-4xl font-black tracking-tight leading-none mb-2" dangerouslySetInnerHTML={{ __html: navigationSteps[0].instructions }} />
+                    <p className="text-xl font-bold opacity-70 uppercase tracking-widest">{navigationSteps[0].distance.text} AWAY</p>
+                  </div>
+                </motion.div>
+              )}
+
               <motion.div
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="bg-black/90 backdrop-blur-3xl rounded-[2.5rem] p-6 border border-white/10 flex items-center gap-6 premium-shadow pointer-events-auto"
+                className="bg-black/90 backdrop-blur-3xl rounded-[2.5rem] p-6 border border-white/10 flex items-center gap-6 premium-shadow pointer-events-auto w-fit"
               >
                 <div className="bg-blue-600 p-4 rounded-3xl shadow-[0_15px_30px_-5px_rgba(37,99,235,0.4)]">
                   <Navigation size={28} className="text-white" />
                 </div>
                 <div>
-                  <h4 className="font-black text-xl text-white tracking-tight">Active Navigation</h4>
-                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.3em] mt-1">{networkStatus.connected ? 'GPS Ready' : 'Searching...'}</p>
+                  <h4 className="font-black text-xl text-white tracking-tight">{isNavigating ? 'Navigating' : 'GPS Active'}</h4>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.3em] mt-1">{networkStatus.connected ? 'High Precision' : 'Searching...'}</p>
                 </div>
               </motion.div>
             </div>
