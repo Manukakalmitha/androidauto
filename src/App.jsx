@@ -53,6 +53,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 export default function App() {
   // --- Auth & Config State ---
   const [spotifyToken, setSpotifyToken] = useState(null);
+  const tokenRef = useRef(null);
 
   // --- Real-time Hardware State ---
   const [time, setTime] = useState(new Date());
@@ -108,9 +109,11 @@ export default function App() {
       console.log("Supabase Auth Event:", event);
       if (session?.provider_token) {
         setSpotifyToken(session.provider_token);
+        tokenRef.current = session.provider_token;
         spotifyApi.setAccessToken(session.provider_token);
       } else if (event === 'SIGNED_OUT') {
         setSpotifyToken(null);
+        tokenRef.current = null;
         setPlaybackState(null);
       }
     });
@@ -119,6 +122,7 @@ export default function App() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.provider_token) {
         setSpotifyToken(session.provider_token);
+        tokenRef.current = session.provider_token;
         spotifyApi.setAccessToken(session.provider_token);
       }
     });
@@ -203,25 +207,18 @@ export default function App() {
   useEffect(() => {
     if (!spotifyToken) return;
 
-    // Remove existing script if any to avoid duplication
-    const existingScript = document.getElementById('spotify-player-sdk');
-    if (!existingScript) {
-      const script = document.createElement("script");
-      script.id = 'spotify-player-sdk';
-      script.src = "https://sdk.scdn.co/spotify-player.js";
-      script.async = true;
-      document.body.appendChild(script);
-    }
-
+    // Define the ready callback BEFORE loading the script
     window.onSpotifyWebPlaybackSDKReady = () => {
+      console.log("Spotify SDK: Web Playback SDK Ready callback triggered");
       if (window.Spotify && !spotifyPlayer) {
         const player = new window.Spotify.Player({
           name: 'Android Auto Dashboard',
           getOAuthToken: cb => {
-            if (typeof spotifyToken === 'string' && spotifyToken.length > 0) {
-              cb(spotifyToken);
+            const currentToken = tokenRef.current || spotifyToken;
+            if (currentToken) {
+              cb(currentToken);
             } else {
-              console.warn("Spotify SDK: Token not ready yet.");
+              console.warn("Spotify SDK: Token ref empty, cannot authorize.");
             }
           },
           volume: 0.5
@@ -253,9 +250,20 @@ export default function App() {
       }
     };
 
+    // Load script only if not present
+    if (!document.getElementById('spotify-player-sdk')) {
+      const script = document.createElement("script");
+      script.id = 'spotify-player-sdk';
+      script.src = "https://sdk.scdn.co/spotify-player.js";
+      script.async = true;
+      document.body.appendChild(script);
+    } else if (window.Spotify && !spotifyPlayer) {
+      // If script is already there but player not initialized, trigger callback manually
+      window.onSpotifyWebPlaybackSDKReady();
+    }
+
     return () => {
-      // Don't disconnect here to maintain background play if navigating within React
-      // Only cleanup script reference to prevent leaks
+      // Persistent player strategy
     };
   }, [spotifyToken, spotifyPlayer]);
 
