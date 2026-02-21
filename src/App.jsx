@@ -38,7 +38,7 @@ import { Network } from '@capacitor/network';
 import { Geolocation } from '@capacitor/geolocation';
 
 // Google Maps Extended Components (React Wrappers)
-import { APILoader, PlacePicker } from '@googlemaps/extended-component-library/react';
+import { APILoader } from '@googlemaps/extended-component-library/react';
 
 const spotifyApi = new SpotifyWebApi();
 
