@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SpotifyWebApi from 'spotify-web-api-js';
+import { createClient } from '@supabase/supabase-js';
 
 // Capacitor Plugins
 import { Device } from '@capacitor/device';
@@ -41,6 +42,10 @@ const spotifyApi = new SpotifyWebApi();
 // --- Configuration from Environment ---
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
 const SPOTIFY_CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID;
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export default function App() {
   // --- Auth & Config State ---
@@ -90,46 +95,42 @@ export default function App() {
     };
     monitorHardware();
 
-    // 3. Spotify Token Handling (Implicit Grant)
-    const hash = window.location.hash.substring(1);
-    const params = new URLSearchParams(hash);
-    const token = params.get('access_token');
-    const error = params.get('error');
+    // 3. Supabase Auth Listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("Supabase Auth Event:", event);
+      if (session?.provider_token) {
+        setSpotifyToken(session.provider_token);
+        spotifyApi.setAccessToken(session.provider_token);
+      } else if (event === 'SIGNED_OUT') {
+        setSpotifyToken(null);
+        setPlaybackState(null);
+      }
+    });
 
-    if (error) {
-      console.error("Spotify Auth Error:", error);
-      alert(`Spotify Login Failed: ${error}`);
-    } else if (token) {
-      setSpotifyToken(token);
-      spotifyApi.setAccessToken(token);
-      window.location.hash = ''; // Clear token from URL
-    }
+    // Initial session check
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.provider_token) {
+        setSpotifyToken(session.provider_token);
+        spotifyApi.setAccessToken(session.provider_token);
+      }
+    });
 
-    return () => clearInterval(timer);
+    return () => {
+      clearInterval(timer);
+      subscription.unsubscribe();
+    };
   }, []);
 
   // --- Spotify Functions ---
-  const loginToSpotify = () => {
-    if (!SPOTIFY_CLIENT_ID || SPOTIFY_CLIENT_ID === 'YOUR_SPOTIFY_CLIENT_ID_HERE') {
-      alert("Spotify Client ID is not configured. Please add it to your .env file.");
-      return;
-    }
-    const redirectUri = window.location.origin + '/';
-    const scopes = [
-      'user-read-playback-state',
-      'user-modify-playback-state',
-      'user-read-currently-playing',
-      'playlist-read-private',
-      'user-library-read'
-    ].join(' '); // Use standard space, URLSearchParams will encode it
-    const authUrl = new URL('https://accounts.spotify.com/authorize');
-    authUrl.searchParams.append('client_id', SPOTIFY_CLIENT_ID);
-    authUrl.searchParams.append('response_type', 'token');
-    authUrl.searchParams.append('redirect_uri', redirectUri);
-    authUrl.searchParams.append('scope', scopes);
-    authUrl.searchParams.append('show_dialog', 'true');
-
-    window.location.href = authUrl.toString();
+  const loginToSpotify = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'spotify',
+      options: {
+        scopes: 'user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-library-read',
+        redirectTo: window.location.origin
+      }
+    });
+    if (error) console.error("Login error:", error);
   };
 
   useEffect(() => {
