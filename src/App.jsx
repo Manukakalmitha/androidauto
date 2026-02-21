@@ -22,7 +22,7 @@ import {
   Car,
   Bike,
   BusFront,
-  Walking,
+  Footprints,
   History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -335,7 +335,7 @@ export default function App() {
                     { id: 'DRIVING', icon: <Car size={20} /> },
                     { id: 'BICYCLING', icon: <Bike size={20} /> },
                     { id: 'TRANSIT', icon: <BusFront size={20} /> },
-                    { id: 'WALKING', icon: <Walking size={20} /> }
+                    { id: 'WALKING', icon: <Footprints size={20} /> }
                   ].map((mode) => (
                     <button
                       key={mode.id}
