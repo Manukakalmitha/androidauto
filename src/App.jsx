@@ -94,7 +94,7 @@ export default function App() {
 
   // --- Spotify Functions ---
   const loginToSpotify = () => {
-    const redirectUri = window.location.origin;
+    const redirectUri = window.location.origin + '/';
     const scopes = [
       'user-read-playback-state',
       'user-modify-playback-state',
