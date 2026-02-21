@@ -23,13 +23,15 @@ import {
   Compass
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Loader } from '@googlemaps/js-api-loader';
 import SpotifyWebApi from 'spotify-web-api-js';
 
 // Capacitor Plugins
 import { Device } from '@capacitor/device';
 import { Network } from '@capacitor/network';
 import { Geolocation } from '@capacitor/geolocation';
+
+// Google Maps Extended Components (React Wrappers)
+import { APILoader, PlacePicker } from '@googlemaps/extended-component-library/react';
 
 const spotifyApi = new SpotifyWebApi();
 
@@ -51,9 +53,11 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('maps');
   const [showAppDrawer, setShowAppDrawer] = useState(false);
   const [playbackState, setPlaybackState] = useState(null);
-  const [map, setMap] = useState(null);
+
+  // Refs for Maps Components
   const mapRef = useRef(null);
-  const searchInputRef = useRef(null);
+  const pickerRef = useRef(null);
+  const markerRef = useRef(null);
 
   // --- Initialization ---
   useEffect(() => {
@@ -62,12 +66,16 @@ export default function App() {
 
     // 2. Hardware Monitors
     const monitorHardware = async () => {
-      const bInfo = await Device.getBatteryInfo();
-      setBatteryInfo(bInfo);
-      const nStatus = await Network.getStatus();
-      setNetworkStatus(nStatus);
-      const pos = await Geolocation.getCurrentPosition();
-      setCurrentCoords(pos.coords);
+      try {
+        const bInfo = await Device.getBatteryInfo();
+        setBatteryInfo(bInfo);
+        const nStatus = await Network.getStatus();
+        setNetworkStatus(nStatus);
+        const pos = await Geolocation.getCurrentPosition();
+        setCurrentCoords(pos.coords);
+      } catch (e) {
+        console.error("Hardware monitor error:", e);
+      }
     };
     monitorHardware();
 
@@ -108,50 +116,34 @@ export default function App() {
     }
   }, [spotifyToken]);
 
-  // --- Google Maps Integration ---
-  useEffect(() => {
-    if (GOOGLE_MAPS_API_KEY && mapRef.current && !map) {
-      const loader = new Loader({
-        apiKey: GOOGLE_MAPS_API_KEY,
-        version: "weekly",
-        libraries: ["places", "directions"]
-      });
+  // --- Google Maps Logic ---
+  const handlePlaceChange = (e) => {
+    const picker = e.target;
+    const place = picker.value;
+    if (!place || !place.location) return;
 
-      loader.load().then(() => {
-        const initialMap = new google.maps.Map(mapRef.current, {
-          center: currentCoords ? { lat: currentCoords.latitude, lng: currentCoords.longitude } : { lat: 40.7128, lng: -74.0060 },
-          zoom: 15,
-          disableDefaultUI: true,
-          styles: darkMapStyle
-        });
-        setMap(initialMap);
-      });
+    const mapEl = mapRef.current;
+    if (!mapEl) return;
+
+    if (place.viewport) {
+      mapEl.innerMap.fitBounds(place.viewport);
+    } else {
+      mapEl.center = place.location;
+      mapEl.zoom = 17;
     }
-  }, [currentCoords, map]);
 
-  const handleRouting = (destination) => {
-    if (!map || !destination) return;
-    const directionsService = new google.maps.DirectionsService();
-    const directionsRenderer = new google.maps.DirectionsRenderer({ map });
-
-    directionsService.route({
-      origin: currentCoords ? { lat: currentCoords.latitude, lng: currentCoords.longitude } : 'New York, NY',
-      destination: destination,
-      travelMode: google.maps.TravelMode.DRIVING,
-    }, (result, status) => {
-      if (status === google.maps.DirectionsStatus.OK) {
-        directionsRenderer.setDirections(result);
-      } else {
-        alert("Could not calculate route: " + status);
-      }
-    });
+    if (markerRef.current) {
+      markerRef.current.position = place.location;
+    }
   };
-
 
   const formattedTime = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   return (
     <div className="h-screen w-screen bg-black text-white flex overflow-hidden font-sans select-none antialiased p-2 gap-2">
+
+      {/* Component Library Loader */}
+      <APILoader apiKey={GOOGLE_MAPS_API_KEY} solutionChannel="GMP_GE_mapsandplacesautocomplete_v2" />
 
       {/* Functional Sidebar */}
       <nav className="w-20 flex flex-col justify-between items-center py-8 bg-[#0a0a0a] rounded-[2.5rem] border border-white/5 z-[100] shadow-2xl">
@@ -209,35 +201,34 @@ export default function App() {
         {/* Dynamic Split Layout */}
         <div className="flex-1 flex gap-2 overflow-hidden">
 
-          {/* Map Container */}
+          {/* Advanced Map Container */}
           <div className={`transition-all duration-700 ease-in-out relative rounded-[3rem] overflow-hidden border border-white/5 bg-[#121212] ${activeTab === 'maps' ? 'flex-[2.5]' : 'flex-1'}`}>
-            <div ref={mapRef} className="w-full h-full" />
-
-            {/* Functional Map Search */}
-            <div className="absolute top-8 left-8 right-8 z-10 flex gap-4 pointer-events-none">
-              <div className="w-full max-w-sm pointer-events-auto">
-                <div className="relative group shadow-3xl">
-                  <input
-                    type="text"
-                    placeholder="Search Destination..."
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleRouting(e.target.value);
-                        e.target.blur();
-                      }
-                    }}
-                    className="w-full bg-black/80 backdrop-blur-3xl border border-white/10 rounded-[2rem] px-16 py-5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all placeholder:text-zinc-600"
-                  />
-                  <div className="absolute left-6 top-1/2 -translate-y-1/2">
-                    <Search size={22} className="text-blue-500" />
-                  </div>
-                  <div className="absolute right-6 top-1/2 -translate-y-1/2 text-zinc-600 text-[10px] font-bold uppercase tracking-widest">Enter to Route</div>
-                </div>
+            <gmp-map
+              ref={mapRef}
+              center={currentCoords ? `${currentCoords.latitude},${currentCoords.longitude}` : "40.749933,-73.98633"}
+              zoom="13"
+              map-id="DEMO_MAP_ID"
+              style={{ width: '100%', height: '100%', '--gmp-font-family': 'Inter, sans-serif' }}
+            >
+              <div slot="control-block-start-inline-start" className="p-8 w-full max-w-sm">
+                <PlacePicker
+                  ref={pickerRef}
+                  placeholder="Search Destinations..."
+                  onPlaceChange={handlePlaceChange}
+                  style={{
+                    width: '100%',
+                    '--gmpx-color-surface': '#1a1a1a',
+                    '--gmpx-color-on-surface': '#ffffff',
+                    '--gmpx-border-radius': '1.5rem',
+                    '--gmpx-font-family': 'Inter, sans-serif'
+                  }}
+                />
               </div>
-            </div>
+              <gmp-advanced-marker ref={markerRef}></gmp-advanced-marker>
+            </gmp-map>
 
             {/* Float Stats Overlay */}
-            <div className="absolute bottom-8 left-8 flex gap-4 pointer-events-none">
+            <div className="absolute bottom-8 left-8 flex gap-4 pointer-events-none z-10">
               <motion.div
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
@@ -247,8 +238,8 @@ export default function App() {
                   <Navigation size={28} className="text-white" />
                 </div>
                 <div>
-                  <h4 className="font-black text-xl text-white tracking-tight">Driving Mode</h4>
-                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.3em] mt-1">{networkStatus.connected ? 'GPS Active' : 'Offline'}</p>
+                  <h4 className="font-black text-xl text-white tracking-tight">Active Navigation</h4>
+                  <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-[0.3em] mt-1">{networkStatus.connected ? 'GPS Ready' : 'Searching...'}</p>
                 </div>
               </motion.div>
             </div>
@@ -280,7 +271,7 @@ export default function App() {
                   <div className="flex justify-between items-center">
                     <div className="flex items-center gap-3">
                       <SpotifyLogo size={32} />
-                      <span className="text-[10px] font-black text-green-500 tracking-[0.3em] uppercase">Connect</span>
+                      <span className="text-[10px] font-black text-green-500 tracking-[0.3em] uppercase">Connected</span>
                     </div>
                     <button onClick={() => setSpotifyToken(null)} className="text-zinc-600 hover:text-white"><LogOut size={20} /></button>
                   </div>
@@ -342,7 +333,7 @@ export default function App() {
                   <MapPin size={28} />
                 </div>
                 <div className="space-y-0.5">
-                  <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Current Position</p>
+                  <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest">Global Position</p>
                   <p className="text-sm font-black text-white truncate max-w-[120px]">
                     {currentCoords ? `${currentCoords.latitude.toFixed(4)}, ${currentCoords.longitude.toFixed(4)}` : 'Wait for GPS...'}
                   </p>
@@ -385,8 +376,8 @@ export default function App() {
 
             <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-x-12 gap-y-20">
               {[
-                { name: 'Navigation', icon: <GoogleMapsLogo size={56} />, bg: 'bg-white' },
-                { name: 'Spotify Music', icon: <SpotifyLogo size={56} />, bg: 'bg-black' },
+                { name: 'Navigation', icon: <Navigation size={56} />, bg: 'bg-white' },
+                { name: 'Spotify Music', icon: <Music2 size={56} />, bg: 'bg-black' },
                 { name: 'Phone Calls', icon: <Phone size={56} />, bg: 'bg-green-600', text: 'text-white' },
                 { name: 'Weather', icon: <Cloud size={56} />, bg: 'bg-blue-500', text: 'text-white' },
                 { name: 'Settings', icon: <SettingsIcon size={56} />, bg: 'bg-zinc-700', text: 'text-zinc-300' },
@@ -396,7 +387,7 @@ export default function App() {
                   key={index}
                   whileHover={{ y: -15, scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  onClick={() => { if (app.action) app.action(); else setShowAppDrawer(false); }}
+                  onClick={() => setShowAppDrawer(false)}
                   className="flex flex-col items-center gap-6 group"
                 >
                   <div className={`w-32 h-32 rounded-[3.5rem] ${app.bg} ${app.text} flex items-center justify-center shadow-3xl border border-white/5 transition-all duration-500`}>
@@ -414,20 +405,32 @@ export default function App() {
   );
 }
 
-// --- Utils ---
-const darkMapStyle = [
-  { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
-  { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
-  { featureType: "poi", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
-  { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
-  { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
-  { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
-  { featureType: "road.highway", elementType: "geometry", stylers: [{ color: "#746855" }] },
-  { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
-];
+// --- Logos ---
+const SpotifyLogo = ({ size = 24 }) => (
+  <div style={{ width: size, height: size }} className="flex items-center justify-center overflow-hidden">
+    <img
+      src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/1024px-Spotify_logo_without_text.svg.png"
+      width={size}
+      height={size}
+      alt="Spotify"
+      className="object-contain"
+    />
+  </div>
+);
 
+const GoogleMapsLogo = ({ size = 24 }) => (
+  <div style={{ width: size, height: size }} className="flex items-center justify-center overflow-hidden">
+    <img
+      src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Google_Maps_icon_%282020%29.svg/1024px-Google_Maps_icon_%282020%29.svg.png"
+      width={size}
+      height={size}
+      alt="Google Maps"
+      className="object-contain"
+    />
+  </div>
+);
+
+// --- Utils ---
 const fmtMs = (ms) => {
   const min = Math.floor(ms / 60000);
   const sec = ((ms % 60000) / 1000).toFixed(0);
