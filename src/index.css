@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  background-color: black;
+  color: white;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+/* Custom Scrollbar for Drawer */
+::-webkit-scrollbar {
+  width: 0px;
+  background: transparent;
+}
+
+.glass {
+  background: rgba(26, 26, 26, 0.6);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.premium-shadow {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+@layer components {
+  .aa-btn {
+    @apply p-4 rounded-3xl transition-all duration-300 active:scale-90 hover:bg-zinc-800/50;
+  }
+  
+  .aa-card {
+    @apply bg-zinc-900/50 border border-white/5 rounded-[2.5rem] overflow-hidden shadow-2xl transition-all duration-500;
+  }
+}
