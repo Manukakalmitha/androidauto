@@ -121,8 +121,15 @@ export default function App() {
       'user-read-currently-playing',
       'playlist-read-private',
       'user-library-read'
-    ].join('%20');
-    window.location.href = `https://accounts.spotify.com/authorize?client_id=${SPOTIFY_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scopes}&response_type=token&show_dialog=true`;
+    ].join(' '); // Use standard space, URLSearchParams will encode it
+    const authUrl = new URL('https://accounts.spotify.com/authorize');
+    authUrl.searchParams.append('client_id', SPOTIFY_CLIENT_ID);
+    authUrl.searchParams.append('response_type', 'token');
+    authUrl.searchParams.append('redirect_uri', redirectUri);
+    authUrl.searchParams.append('scope', scopes);
+    authUrl.searchParams.append('show_dialog', 'true');
+
+    window.location.href = authUrl.toString();
   };
 
   useEffect(() => {
@@ -402,7 +409,10 @@ export default function App() {
                           </div>
                         ))
                       ) : (
-                        <p className="text-center text-zinc-400 text-xs font-bold uppercase tracking-widest p-10">Updating directions...</p>
+                        <div className="p-10 text-center space-y-4">
+                          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto opacity-20" />
+                          <p className="text-zinc-400 text-xs font-bold uppercase tracking-widest leading-relaxed">Instructions loading...</p>
+                        </div>
                       )}
                     </div>
                   </div>
