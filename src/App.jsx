@@ -53,11 +53,14 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('maps');
   const [showAppDrawer, setShowAppDrawer] = useState(false);
   const [playbackState, setPlaybackState] = useState(null);
+  const [selectedPlace, setSelectedPlace] = useState(null);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   // Refs for Maps Components
   const mapRef = useRef(null);
   const pickerRef = useRef(null);
   const markerRef = useRef(null);
+  const directionsRendererRef = useRef(null);
 
   // --- Initialization ---
   useEffect(() => {
@@ -131,8 +134,12 @@ export default function App() {
   const handlePlaceChange = (e) => {
     const picker = e.target;
     const place = picker.value;
-    if (!place || !place.location) return;
+    if (!place || !place.location) {
+      setSelectedPlace(null);
+      return;
+    }
 
+    setSelectedPlace(place);
     const mapEl = mapRef.current;
     if (!mapEl) return;
 
@@ -146,6 +153,47 @@ export default function App() {
     if (markerRef.current) {
       markerRef.current.position = place.location;
     }
+  };
+
+  const startNavigation = async () => {
+    if (!selectedPlace || !selectedPlace.location || !currentCoords) return;
+
+    // Ensure we have the routes library
+    const { DirectionsService, DirectionsRenderer } = await google.maps.importLibrary("routes");
+
+    if (!directionsRendererRef.current) {
+      directionsRendererRef.current = new DirectionsRenderer({
+        map: mapRef.current.innerMap,
+        suppressMarkers: true,
+        polylineOptions: {
+          strokeColor: '#3b82f6',
+          strokeWeight: 8,
+          strokeOpacity: 0.8
+        }
+      });
+    }
+
+    const service = new DirectionsService();
+    service.route({
+      origin: { lat: currentCoords.latitude, lng: currentCoords.longitude },
+      destination: selectedPlace.location,
+      travelMode: google.maps.TravelMode.DRIVING,
+    }, (result, status) => {
+      if (status === 'OK') {
+        directionsRendererRef.current.setDirections(result);
+        setIsNavigating(true);
+      }
+    });
+  };
+
+  const endNavigation = () => {
+    if (directionsRendererRef.current) {
+      directionsRendererRef.current.setDirections({ routes: [] });
+    }
+    setIsNavigating(false);
+    setSelectedPlace(null);
+    if (markerRef.current) markerRef.current.position = null;
+    if (pickerRef.current) pickerRef.current.value = null;
   };
 
   const formattedTime = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -219,19 +267,44 @@ export default function App() {
               map-id="DEMO_MAP_ID"
               style={{ width: '100%', height: '100%', '--gmp-font-family': 'Inter, sans-serif' }}
             >
-              <div slot="control-block-start-inline-start" className="p-8 w-full max-w-sm">
+              <div slot="control-block-start-inline-start" className="p-8 w-full max-w-sm flex flex-col gap-4">
                 <PlacePicker
                   ref={pickerRef}
-                  placeholder="Search Destinations..."
+                  placeholder="Where to?"
                   onPlaceChange={handlePlaceChange}
                   style={{
                     width: '100%',
                     '--gmpx-color-surface': '#1a1a1a',
                     '--gmpx-color-on-surface': '#ffffff',
                     '--gmpx-border-radius': '1.5rem',
-                    '--gmpx-font-family': 'Inter, sans-serif'
+                    '--gmpx-font-family': 'Inter, sans-serif',
+                    boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
                   }}
                 />
+
+                {selectedPlace && !isNavigating && (
+                  <motion.button
+                    initial={{ y: -20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    onClick={startNavigation}
+                    className="bg-blue-600 text-white font-black py-4 rounded-3xl shadow-2xl flex items-center justify-center gap-3 hover:bg-blue-500 transition-all active:scale-95 border border-white/10"
+                  >
+                    <Navigation size={24} fill="white" />
+                    START ROUTE
+                  </motion.button>
+                )}
+
+                {isNavigating && (
+                  <motion.button
+                    initial={{ y: -20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    onClick={endNavigation}
+                    className="bg-red-600/90 backdrop-blur-md text-white font-black py-4 rounded-3xl shadow-2xl flex items-center justify-center gap-3 hover:bg-red-500 transition-all active:scale-95 border border-white/10"
+                  >
+                    <X size={24} />
+                    END TRIP
+                  </motion.button>
+                )}
               </div>
               <gmp-advanced-marker ref={markerRef}></gmp-advanced-marker>
             </gmp-map>
@@ -258,21 +331,24 @@ export default function App() {
           <div className={`transition-all duration-700 ease-in-out flex flex-col gap-2 ${activeTab === 'maps' ? 'flex-1' : 'flex-[2]'}`}>
 
             {/* Functional Spotify Card */}
-            <div className="flex-1 rounded-[3rem] bg-[#050505] border border-white/5 overflow-hidden flex flex-col p-8 premium-shadow relative group">
+            <div className="flex-1 rounded-[3rem] bg-[#050505] border border-white/5 overflow-hidden flex flex-col p-10 premium-shadow relative group">
               {!spotifyToken ? (
-                <div className="flex-1 flex flex-col items-center justify-center space-y-6 text-center">
-                  <div className="w-24 h-24 bg-green-500/10 rounded-full flex items-center justify-center animate-pulse">
-                    <Music2 size={48} className="text-green-500" />
+                <div className="flex-1 flex flex-col items-center justify-center space-y-10 text-center">
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-green-500/20 blur-[50px] rounded-full animate-pulse" />
+                    <div className="w-28 h-28 bg-zinc-900 border border-white/5 rounded-full flex items-center justify-center relative z-10">
+                      <Music2 size={56} className="text-green-500" />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <h3 className="text-2xl font-black text-white px-4 leading-tight">Connect Your Spotify</h3>
-                    <p className="text-zinc-500 text-sm font-medium">Real-world playback and playlists</p>
+                  <div className="space-y-3">
+                    <h3 className="text-3xl font-black text-white px-4 leading-tight tracking-tight">Music not linked</h3>
+                    <p className="text-zinc-500 text-base font-bold uppercase tracking-[0.2em]">Connect Spotify Account</p>
                   </div>
                   <button
                     onClick={loginToSpotify}
-                    className="bg-green-500 text-black font-black px-12 py-5 rounded-full hover:scale-105 active:scale-95 transition-all shadow-xl"
+                    className="w-full max-w-[280px] bg-green-500 text-black font-black py-6 rounded-full hover:scale-105 active:scale-95 transition-all shadow-[0_20px_40px_rgba(34,197,94,0.3)] text-lg"
                   >
-                    SIGN IN
+                    LINK ACCOUNT
                   </button>
                 </div>
               ) : (
