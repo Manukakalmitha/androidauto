@@ -115,6 +115,16 @@ export default function App() {
       }
     });
 
+    // 4. Handle Supabase Auth Errors from URL Parms
+    const query = new URLSearchParams(window.location.search);
+    const errorDesc = query.get('error_description');
+    if (errorDesc) {
+      alert(`Supabase Auth Error: ${errorDesc.replace(/\+/g, ' ')}`);
+      // Clean up URL to prevent repeat alerts
+      const newUrl = window.location.origin + window.location.pathname;
+      window.history.replaceState({}, document.title, newUrl);
+    }
+
     return () => {
       clearInterval(timer);
       subscription.unsubscribe();
