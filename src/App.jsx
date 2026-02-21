@@ -8,19 +8,22 @@ import {
   Music2,
   Phone,
   Mic,
-  Search,
   Play,
   Pause,
   SkipBack,
   SkipForward,
   Signal,
-  Bell,
   X,
   Volume2,
   Cloud,
   LogOut,
   MapPin,
-  Compass
+  Compass,
+  Car,
+  Bike,
+  BusFront,
+  Walking,
+  History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SpotifyWebApi from 'spotify-web-api-js';
@@ -55,12 +58,16 @@ export default function App() {
   const [playbackState, setPlaybackState] = useState(null);
   const [selectedPlace, setSelectedPlace] = useState(null);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [travelMode, setTravelMode] = useState('DRIVING');
+  const [routes, setRoutes] = useState([]);
+  const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
 
   // Refs for Maps Components
   const mapRef = useRef(null);
   const pickerRef = useRef(null);
   const markerRef = useRef(null);
   const directionsRendererRef = useRef(null);
+  const infoWindowRef = useRef(null);
 
   // --- Initialization ---
   useEffect(() => {
@@ -136,6 +143,8 @@ export default function App() {
     const place = picker.value;
     if (!place || !place.location) {
       setSelectedPlace(null);
+      setRoutes([]);
+      if (infoWindowRef.current) infoWindowRef.current.close();
       return;
     }
 
@@ -153,12 +162,28 @@ export default function App() {
     if (markerRef.current) {
       markerRef.current.position = place.location;
     }
+
+    // Show InfoWindow
+    if (window.google && !infoWindowRef.current) {
+      infoWindowRef.current = new window.google.maps.InfoWindow();
+    }
+    if (infoWindowRef.current) {
+      infoWindowRef.current.setContent(`
+        <div style="padding: 8px; color: #000;">
+          <strong style="font-size: 14px;">${place.displayName || place.name}</strong><br/>
+          <span style="font-size: 12px; opacity: 0.8;">${place.formattedAddress}</span>
+        </div>
+      `);
+      infoWindowRef.current.open(mapEl.innerMap, markerRef.current);
+    }
+
+    // Auto-fetch routes when place changes
+    fetchRoutes(place, travelMode);
   };
 
-  const startNavigation = async () => {
-    if (!selectedPlace || !selectedPlace.location || !currentCoords) return;
+  const fetchRoutes = async (place, mode) => {
+    if (!place || !place.location || !currentCoords) return;
 
-    // Ensure we have the routes library
     const { DirectionsService, DirectionsRenderer } = await google.maps.importLibrary("routes");
 
     if (!directionsRendererRef.current) {
@@ -176,15 +201,32 @@ export default function App() {
     const service = new DirectionsService();
     service.route({
       origin: { lat: currentCoords.latitude, lng: currentCoords.longitude },
-      destination: selectedPlace.location,
-      travelMode: google.maps.TravelMode.DRIVING,
+      destination: place.location,
+      travelMode: mode, // TravelMode strings are accepted directly
+      provideRouteAlternatives: true
     }, (result, status) => {
       if (status === 'OK') {
+        setRoutes(result.routes);
+        setSelectedRouteIndex(0);
         directionsRendererRef.current.setDirections(result);
-        setIsNavigating(true);
+        directionsRendererRef.current.setRouteIndex(0);
       }
     });
   };
+
+  const selectRoute = (index) => {
+    setSelectedRouteIndex(index);
+    if (directionsRendererRef.current) {
+      directionsRendererRef.current.setRouteIndex(index);
+    }
+  };
+
+  const startNavigation = () => {
+    setIsNavigating(true);
+    if (infoWindowRef.current) infoWindowRef.current.close();
+  };
+
+  // startNavigation refactored above into startNavigation (setter) and fetchRoutes (logic)
 
   const endNavigation = () => {
     if (directionsRendererRef.current) {
@@ -267,47 +309,106 @@ export default function App() {
               map-id="DEMO_MAP_ID"
               style={{ width: '100%', height: '100%', '--gmp-font-family': 'Inter, sans-serif' }}
             >
-              <div slot="control-block-start-inline-start" className="p-8 w-full max-w-sm flex flex-col gap-4">
-                <PlacePicker
-                  ref={pickerRef}
-                  placeholder="Where to?"
-                  onPlaceChange={handlePlaceChange}
-                  style={{
-                    width: '100%',
-                    '--gmpx-color-surface': '#1a1a1a',
-                    '--gmpx-color-on-surface': '#ffffff',
-                    '--gmpx-border-radius': '1.5rem',
-                    '--gmpx-font-family': 'Inter, sans-serif',
-                    boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
-                  }}
-                />
-
-                {selectedPlace && !isNavigating && (
-                  <motion.button
-                    initial={{ y: -20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    onClick={startNavigation}
-                    className="bg-blue-600 text-white font-black py-4 rounded-3xl shadow-2xl flex items-center justify-center gap-3 hover:bg-blue-500 transition-all active:scale-95 border border-white/10"
-                  >
-                    <Navigation size={24} fill="white" />
-                    START ROUTE
-                  </motion.button>
-                )}
-
-                {isNavigating && (
-                  <motion.button
-                    initial={{ y: -20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    onClick={endNavigation}
-                    className="bg-red-600/90 backdrop-blur-md text-white font-black py-4 rounded-3xl shadow-2xl flex items-center justify-center gap-3 hover:bg-red-500 transition-all active:scale-95 border border-white/10"
-                  >
-                    <X size={24} />
-                    END TRIP
-                  </motion.button>
-                )}
-              </div>
               <gmp-advanced-marker ref={markerRef}></gmp-advanced-marker>
             </gmp-map>
+
+            {/* Official Android Auto Maps Side Panel (Absolute) */}
+            <div className="absolute top-5 left-5 h-[calc(100%-40px)] w-96 bg-white rounded-[2rem] shadow-[0_25px_60px_rgba(0,0,0,0.4)] overflow-hidden flex flex-col pointer-events-auto z-[20]">
+              <div className="p-6 border-b border-zinc-100 flex flex-col gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                  <PlacePicker
+                    ref={pickerRef}
+                    placeholder="Enter destination"
+                    onPlaceChange={handlePlaceChange}
+                    style={{
+                      width: '100%',
+                      '--gmpx-color-surface': '#f8f9fa',
+                      '--gmpx-color-on-surface': '#202124',
+                      '--gmpx-border-radius': '1rem',
+                      '--gmpx-font-family': 'Inter, sans-serif'
+                    }}
+                  />
+                </div>
+                <div className="flex justify-between px-2 pt-2">
+                  {[
+                    { id: 'DRIVING', icon: <Car size={20} /> },
+                    { id: 'BICYCLING', icon: <Bike size={20} /> },
+                    { id: 'TRANSIT', icon: <BusFront size={20} /> },
+                    { id: 'WALKING', icon: <Walking size={20} /> }
+                  ].map((mode) => (
+                    <button
+                      key={mode.id}
+                      onClick={() => { setTravelMode(mode.id); if (selectedPlace) fetchRoutes(selectedPlace, mode.id); }}
+                      className={`p-3 rounded-2xl transition-all ${travelMode === mode.id ? 'bg-blue-50 text-blue-600 shadow-sm' : 'text-zinc-400 hover:bg-zinc-50'}`}
+                    >
+                      {mode.icon}
+                    </button>
+                  ))}
+                  <div className="w-[1px] h-8 bg-zinc-100 self-center" />
+                  <button className="p-3 text-zinc-400 hover:bg-zinc-50 rounded-2xl">
+                    <History size={20} />
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+                {!selectedPlace ? (
+                  <div className="h-full flex flex-col items-center justify-center text-center space-y-4 opacity-40">
+                    <div className="w-16 h-16 bg-zinc-100 rounded-full flex items-center justify-center">
+                      <Navigation size={32} className="text-zinc-400" />
+                    </div>
+                    <p className="text-sm font-bold text-zinc-500 uppercase tracking-widest px-10 leading-relaxed">Search to start your journey</p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-4">
+                    {routes.length > 0 ? (
+                      routes.map((route, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => selectRoute(idx)}
+                          className={`p-5 rounded-[1.5rem] border-2 text-left transition-all ${selectedRouteIndex === idx ? 'border-blue-500 bg-blue-50/30 shadow-md' : 'border-zinc-100 hover:border-zinc-200'}`}
+                        >
+                          <div className="flex justify-between items-start mb-1">
+                            <span className="text-xl font-black text-zinc-900 tracking-tight">{route.legs[0].duration.text}</span>
+                            <span className="text-xs font-black text-green-600 uppercase tracking-widest">{route.legs[0].distance.text}</span>
+                          </div>
+                          <p className="text-xs font-bold text-zinc-500 uppercase tracking-widest leading-none">via {route.summary || 'fastest route'}</p>
+                          {idx === 0 && <div className="mt-3 inline-block px-2 py-0.5 bg-green-100 text-[10px] font-bold text-green-700 rounded-md">FASTEST</div>}
+                        </button>
+                      ))
+                    ) : (
+                      <div className="p-10 text-center text-zinc-400">
+                        <p className="text-xs font-bold uppercase tracking-widest">Calculating routes...</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {selectedPlace && (
+                <div className="p-6 border-t border-zinc-100 bg-white/80 backdrop-blur-md">
+                  {!isNavigating ? (
+                    <button
+                      onClick={startNavigation}
+                      disabled={routes.length === 0}
+                      className={`w-full py-5 rounded-3xl font-black tracking-widest flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg ${routes.length > 0 ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-zinc-100 text-zinc-400'}`}
+                    >
+                      <Navigation size={22} fill="white" />
+                      START ROUTE
+                    </button>
+                  ) : (
+                    <button
+                      onClick={endNavigation}
+                      className="w-full py-5 bg-red-600 text-white font-black tracking-widest rounded-3xl flex items-center justify-center gap-3 transition-all active:scale-95 shadow-lg hover:bg-red-700"
+                    >
+                      <X size={22} />
+                      END TRIP
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
 
             {/* Float Stats Overlay */}
             <div className="absolute bottom-8 left-8 flex gap-4 pointer-events-none z-10">

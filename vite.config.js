@@ -1,15 +1,17 @@
 import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react-swc'
+import react from '@vitejs/plugin-react'
 
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react({
-      template: {
-        compilerOptions: {
-          isCustomElement: (tag) => tag.startsWith('gmp-') || tag.startsWith('gmpx-'),
-        },
+      babel: {
+        plugins: [],
       },
     }),
   ],
+  // Support custom elements
+  optimizeDeps: {
+    include: ['@googlemaps/extended-component-library'],
+  },
 })
