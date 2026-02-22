@@ -402,7 +402,7 @@ export default function App() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'spotify',
       options: {
-        scopes: 'user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-library-read user-library-modify',
+        scopes: 'user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-library-read user-library-modify streaming user-read-email user-read-private',
         redirectTo: window.location.origin
       }
     });
@@ -575,8 +575,11 @@ export default function App() {
   useEffect(() => {
     if (spotifyToken) {
       spotifyApi.getUserPlaylists().then(data => {
-        setPlaylists(data.items);
-      }).catch(err => console.error("Error fetching playlists:", err));
+        if (data && data.items) setPlaylists(data.items);
+      }).catch(err => {
+        // Silently consume rate limit/parse errors
+        if (err.status !== 429) console.error("Error fetching playlists:", err);
+      });
 
       // Fetch Queue for "Up Next"
       const fetchQueue = async () => {
@@ -865,7 +868,7 @@ export default function App() {
       {/* Component Library Loader (v2 uses solutionChannel for compatibility) */}
       <APILoader
         apiKey={GOOGLE_MAPS_API_KEY}
-        solutionChannel="GMP_GE_mapsandplacesautocomplete_v2"
+        solutionChannel="GMP_GCC_placeautocomplete_v1"
         libraries={['places', 'marker']}
       />
 
@@ -1244,16 +1247,7 @@ export default function App() {
                 src={playbackState.item.album.images[0].url}
                 alt=""
                 className="absolute inset-0 w-full h-full object-cover transition-all duration-700"
-                style={{ filter: 'brightness(0.45) saturate(1.2)' }}
-              />
-              {/* Dynamic warm glow overlay extracted from art */}
-              <div
-                className="absolute inset-0 pointer-events-none transition-all duration-1000"
-                style={{
-                  background: `radial-gradient(ellipse 120% 60% at 50% 0%, rgba(80,180,120,0.35) 0%, transparent 70%),
-                                radial-gradient(ellipse 100% 50% at 0% 100%, rgba(40,100,200,0.25) 0%, transparent 70%),
-                                radial-gradient(ellipse 80% 40% at 100% 50%, rgba(220,80,60,0.18) 0%, transparent 70%)`
-                }}
+                style={{ filter: 'brightness(0.35) saturate(1.1)' }}
               />
             </>
           )}
