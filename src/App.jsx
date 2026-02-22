@@ -648,16 +648,34 @@ export default function App() {
       tempDiv.innerHTML = step.instructions;
       const textToSpeak = tempDiv.textContent || tempDiv.innerText || "";
 
-      const utterance = new SpeechSynthesisUtterance(textToSpeak);
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
+      const speak = () => {
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        utterance.rate = 1.1; // Slightly faster for automotive clarity
+        utterance.pitch = 1.05; // Slightly higher pitch for female-leaning tone
 
-      const voices = window.speechSynthesis.getVoices();
-      const englishVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
-      if (englishVoice) utterance.voice = englishVoice;
+        const voices = window.speechSynthesis.getVoices();
+        // Look for common female-sounding voices across platforms
+        const femaleVoice = voices.find(v =>
+          v.lang.startsWith('en') &&
+          (v.name.toLowerCase().includes('female') ||
+            v.name.toLowerCase().includes('samantha') ||
+            v.name.toLowerCase().includes('victoria') ||
+            v.name.toLowerCase().includes('hazel') ||
+            v.name.toLowerCase().includes('google us english') || // Google's default is often female-voiced
+            v.name.toLowerCase().includes('premium'))
+        ) || voices.find(v => v.lang.startsWith('en'));
 
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
+        if (femaleVoice) utterance.voice = femaleVoice;
+
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+      };
+
+      if (window.speechSynthesis.getVoices().length > 0) {
+        speak();
+      } else {
+        window.speechSynthesis.onvoiceschanged = speak;
+      }
     }
   }, [isNavigating, navigationSteps, activeStepIndex]);
 
@@ -704,7 +722,7 @@ export default function App() {
         <div className="flex flex-col items-center gap-6 my-auto">
           {[
             { id: 'maps', icon: <GoogleMapsLogo size={42} className="drop-shadow-md" /> },
-            { id: 'spotify', icon: <div className="bg-[#1DB954] rounded-full w-[46px] h-[46px] shadow-md flex items-center justify-center"><Music2 size={24} className="text-black" /></div> },
+            { id: 'spotify', icon: <div className="bg-[#1DB954] p-2.5 rounded-full w-[46px] h-[46px] shadow-md flex items-center justify-center"><SpotifyLogo size={32} /></div> },
             { id: 'phone', icon: <div className="bg-white rounded-full w-[46px] h-[46px] shadow-md flex items-center justify-center"><Phone size={24} className="text-blue-500 fill-current" /></div> },
           ].map((app) => (
             <button
@@ -841,23 +859,20 @@ export default function App() {
                     </div>
 
                     {/* Inputs Group */}
-                    <div className="flex items-stretch gap-3 mb-2 relative">
-                      <div className="flex flex-col items-center justify-between py-5 px-1">
-                        <div className="w-3 h-3 rounded-full border-[3px] border-zinc-500"></div>
-                        <div className="flex flex-col gap-1.5 my-1">
-                          <div className="w-1 h-1 rounded-full bg-zinc-600"></div>
-                          <div className="w-1 h-1 rounded-full bg-zinc-600"></div>
-                          <div className="w-1 h-1 rounded-full bg-zinc-600"></div>
-                        </div>
-                        <MapPin size={18} className="text-red-500 drop-shadow-md" />
+                    <div className="flex items-stretch gap-4 mb-2 relative px-2">
+                      {/* Connection Line Visual */}
+                      <div className="flex flex-col items-center justify-between py-5 w-6 shrink-0">
+                        <div className="w-2.5 h-2.5 rounded-full border-2 border-zinc-500 bg-transparent ring-2 ring-[#2a2d32]"></div>
+                        <div className="flex-1 w-0.5 border-l border-dashed border-zinc-600 my-1"></div>
+                        <MapPin size={18} className="text-red-500 fill-red-500" />
                       </div>
 
                       <div className="flex-1 flex flex-col gap-2.5">
-                        <div className={`h-[50px] rounded-xl px-2 flex items-center transition-all bg-[#3b3e44] ${!originPlace ? 'ring-2 ring-teal-500 border border-teal-500' : 'border border-white/10'}`}>
+                        <div className={`h-[52px] rounded-xl px-3 flex items-center transition-all bg-[#1a1c1e] border ${!originPlace ? 'border-teal-500 ring-1 ring-teal-500/30' : 'border-white/5'}`}>
                           <div className="flex-1 overflow-hidden">
                             <gmpx-place-picker
                               ref={originPickerRef}
-                              placeholder={originPlace === 'CURRENT_LOCATION' ? 'Your location' : 'Choose starting point...'}
+                              placeholder={originPlace === 'CURRENT_LOCATION' ? 'Your location' : 'Enter origin'}
                               for-map="main-map"
                               style={{
                                 width: '100%',
@@ -865,17 +880,17 @@ export default function App() {
                                 '--gmpx-color-on-surface': '#ffffff',
                                 '--gmpx-border-radius': '0',
                                 '--gmpx-font-family': 'Inter, sans-serif',
-                                '--gmpx-font-size-base': '0.95rem',
-                                '--gmpx-placeholder-color': originPlace === 'CURRENT_LOCATION' ? '#ffffff' : '#a1a1aa'
+                                '--gmpx-font-size-base': '1rem',
+                                '--gmpx-placeholder-color': originPlace === 'CURRENT_LOCATION' ? '#ffffff' : '#71717a'
                               }}
                             ></gmpx-place-picker>
                           </div>
                         </div>
-                        <div className="h-[50px] rounded-xl px-2 bg-[#3b3e44] flex items-center border border-white/10">
+                        <div className="h-[52px] rounded-xl px-3 flex items-center transition-all bg-[#1a1c1e] border border-white/5">
                           <div className="flex-1 overflow-hidden">
                             <gmpx-place-picker
                               ref={destinationPickerRef}
-                              placeholder="Choose destination..."
+                              placeholder="Enter destination"
                               for-map="main-map"
                               style={{
                                 width: '100%',
@@ -883,17 +898,17 @@ export default function App() {
                                 '--gmpx-color-on-surface': '#ffffff',
                                 '--gmpx-border-radius': '0',
                                 '--gmpx-font-family': 'Inter, sans-serif',
-                                '--gmpx-font-size-base': '0.95rem',
-                                '--gmpx-placeholder-color': '#a1a1aa'
+                                '--gmpx-font-size-base': '1rem',
+                                '--gmpx-placeholder-color': '#71717a'
                               }}
                             ></gmpx-place-picker>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-center pl-1 pr-2">
-                        <button onClick={swapLocations} className="w-10 h-10 rounded-full flex items-center justify-center text-zinc-400 hover:text-white transition-all active:scale-90">
-                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 8 16 13"></polyline><line x1="21" y1="8" x2="9" y2="8"></line><polyline points="8 21 3 16 8 11"></polyline><line x1="3" y1="16" x2="15" y2="16"></line></svg>
+                      <div className="flex items-center justify-center pl-2">
+                        <button onClick={swapLocations} className="w-12 h-12 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition-all active:scale-90">
+                          <Split size={22} className="rotate-90" />
                         </button>
                       </div>
                     </div>
@@ -1349,14 +1364,10 @@ function DeviceSettings({ show, onClose, profile, setProfile }) {
 
 // --- Logos ---
 const SpotifyLogo = ({ size = 24 }) => (
-  <div style={{ width: size, height: size }} className="flex items-center justify-center overflow-hidden">
-    <img
-      src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/Spotify_logo_without_text.svg/1024px-Spotify_logo_without_text.svg.png"
-      width={size}
-      height={size}
-      alt="Spotify"
-      className="object-contain"
-    />
+  <div style={{ width: size, height: size }} className="flex items-center justify-center overflow-hidden shrink-0">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 496" width="100%" height="100%">
+      <path d="M248 8C115.456 8 8 115.456 8 248s107.456 240 240 240 240-107.456 240-240S380.544 8 248 8zm110.72 346.848c-4.352 7.168-13.632 9.472-20.8 5.12-53.504-32.96-120.32-40.32-199.168-22.336-8.192 1.792-16.128-3.456-17.92-11.648-1.792-8.128 3.456-16.128 11.648-17.92 86.848-19.84 161.408-11.2 221.12 25.6 7.168 4.352 9.472 13.568 5.12 21.216zm27.424-65.248c-5.44 8.768-16.896 11.648-25.6 6.144-61.12-37.568-154.56-48.448-226.944-26.496-10.048 3.008-20.672-2.688-23.744-12.672s2.688-20.672 12.672-23.744c82.752-25.088 186.24-12.672 256.448 30.528 8.896 5.44 11.712 16.896 6.168 26.24zm2.368-68.512c-73.408-43.52-194.24-47.552-264.448-26.304-11.264 3.392-23.04-3.072-26.432-14.336s3.072-23.04 14.336-26.432c81.088-24.576 214.336-19.84 298.816 30.336 10.112 6.016 13.44 19.136 7.424 29.248-6.016 10.176-19.136 13.44-29.712 7.488z" style={{ fill: '#1db954' }} />
+    </svg>
   </div>
 );
 
