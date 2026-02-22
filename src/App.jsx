@@ -26,7 +26,9 @@ import {
   History,
   Shuffle,
   Repeat,
-  Heart
+  Heart,
+  User,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SpotifyWebApi from 'spotify-web-api-js';
@@ -108,6 +110,20 @@ export default function App() {
   const [showSpotifyBrowser, setShowSpotifyBrowser] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
   const [upNext, setUpNext] = useState(null);
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const [showSettings, setShowSettings] = useState(false);
+
+  const [deviceProfile, setDeviceProfile] = useState(() => {
+    const saved = localStorage.getItem('android-auto-profile');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { }
+    }
+    return { name: 'Driver', home: null, work: null, isGoogleLinked: false };
+  });
+
+  useEffect(() => {
+    localStorage.setItem('android-auto-profile', JSON.stringify(deviceProfile));
+  }, [deviceProfile]);
 
   // Refs for Maps Components
   const mapRef = useRef(null);
@@ -115,6 +131,8 @@ export default function App() {
   const markerRef = useRef(null);
   const directionsRendererRef = useRef(null);
   const infoWindowRef = useRef(null);
+  const homePickerRef = useRef(null);
+  const workPickerRef = useRef(null);
 
   // --- Initialization ---
   useEffect(() => {
@@ -430,6 +448,22 @@ export default function App() {
     fetchRoutes(place, travelMode);
   };
 
+  const routeToSavedLoc = (savedLoc) => {
+    if (!savedLoc) return;
+    const manualPlace = {
+      location: { lat: savedLoc.lat, lng: savedLoc.lng },
+      displayName: savedLoc.name,
+      formattedAddress: savedLoc.address,
+    };
+    setSelectedPlace(manualPlace);
+    if (mapRef.current) {
+      mapRef.current.center = manualPlace.location;
+      mapRef.current.zoom = 17;
+      if (markerRef.current) markerRef.current.position = manualPlace.location;
+      fetchRoutes(manualPlace, 'DRIVING');
+    }
+  };
+
   const fetchRoutes = async (place, mode) => {
     if (!place || !place.location || !currentCoords) return;
 
@@ -477,8 +511,30 @@ export default function App() {
 
   const startNavigation = () => {
     setIsNavigating(true);
+    setActiveStepIndex(0);
     if (infoWindowRef.current) infoWindowRef.current.close();
   };
+
+  // --- Voice Navigation ---
+  useEffect(() => {
+    if (isNavigating && navigationSteps.length > 0 && activeStepIndex < navigationSteps.length) {
+      const step = navigationSteps[activeStepIndex];
+      const tempDiv = document.createElement("div");
+      tempDiv.innerHTML = step.instructions;
+      const textToSpeak = tempDiv.textContent || tempDiv.innerText || "";
+
+      const utterance = new SpeechSynthesisUtterance(textToSpeak);
+      utterance.rate = 1.0;
+      utterance.pitch = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const englishVoice = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google')) || voices.find(v => v.lang.startsWith('en'));
+      if (englishVoice) utterance.voice = englishVoice;
+
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    }
+  }, [isNavigating, navigationSteps, activeStepIndex]);
 
   // startNavigation refactored above into startNavigation (setter) and fetchRoutes (logic)
 
@@ -486,9 +542,11 @@ export default function App() {
     if (directionsRendererRef.current) {
       directionsRendererRef.current.setDirections({ routes: [] });
     }
+    window.speechSynthesis.cancel();
     setIsNavigating(false);
     setSelectedPlace(null);
     setNavigationSteps([]);
+    setActiveStepIndex(0);
     if (markerRef.current) markerRef.current.position = null;
     if (pickerRef.current) pickerRef.current.value = null;
   };
@@ -502,7 +560,7 @@ export default function App() {
       <APILoader apiKey={GOOGLE_MAPS_API_KEY} solutionChannel="GMP_GE_mapsandplacesautocomplete_v2" />
 
       {/* Left Vertical Navigation Bar */}
-      <nav className="w-24 bg-black border-r border-white/5 flex flex-col justify-between items-center py-10 z-[100] premium-shadow">
+      <nav className="w-24 bg-[#0a0a0a] border-r border-white/5 flex flex-col justify-between items-center py-10 z-[100] shadow-[15px_0_30px_rgba(0,0,0,0.4)]">
         <div className="flex flex-col gap-10 items-center">
           <button onClick={() => setShowAppDrawer(!showAppDrawer)} className={`w-16 h-16 flex items-center justify-center rounded-3xl transition-all ${showAppDrawer ? 'bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)]' : 'bg-zinc-900 text-white/40 hover:text-white'}`}>
             <LayoutGrid size={32} />
@@ -526,6 +584,7 @@ export default function App() {
         </div>
 
         <div className="flex flex-col gap-10 items-center">
+          <button onClick={() => setShowSettings(!showSettings)} className={`w-16 h-16 flex items-center justify-center rounded-full transition-all active:scale-90 ${showSettings ? 'bg-purple-600 text-white shadow-lg' : 'bg-zinc-900 text-zinc-600 hover:text-white'}`}><User size={32} /></button>
           <button className="w-16 h-16 flex items-center justify-center rounded-full bg-zinc-900 text-zinc-600 hover:text-white transition-all active:scale-90"><Mic size={32} /></button>
           <div className="flex flex-col items-center gap-1 opacity-40">
             <span className="text-[10px] font-black text-white tracking-widest">{formattedTime.split(' ')[0]}</span>
@@ -550,7 +609,7 @@ export default function App() {
 
           {/* Floating Map Search/Directions Card */}
           <div className="absolute top-8 left-8 w-[440px] max-h-[calc(100%-64px)] pointer-events-none flex flex-col gap-4 z-50">
-            <div className="bg-black/80 backdrop-blur-[40px] rounded-[3rem] border border-white/10 shadow-[0_40px_100px_rgba(0,0,0,0.6)] pointer-events-auto overflow-hidden flex flex-col">
+            <div className="glass-panel rounded-[3rem] shadow-[0_40px_100px_rgba(0,0,0,0.6)] pointer-events-auto overflow-hidden flex flex-col border-t border-white/20">
               <div className="p-8 border-b border-white/5 flex flex-col gap-6">
                 <div className="flex items-center gap-4 bg-white/5 p-2 rounded-3xl border border-white/5 focus-within:border-blue-500/50 transition-all">
                   <Navigation size={24} className="text-blue-500 ml-4" />
@@ -569,6 +628,21 @@ export default function App() {
                     ></gmpx-place-picker>
                   </div>
                 </div>
+
+                {!isNavigating && !selectedPlace && (deviceProfile.home || deviceProfile.work) && (
+                  <div className="flex gap-4">
+                    {deviceProfile.home && (
+                      <button onClick={() => routeToSavedLoc(deviceProfile.home)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white rounded-2xl flex items-center justify-center gap-2 border border-white/5 transition-all text-sm font-bold shadow-lg">
+                        <MapPin size={18} className="text-blue-500" /> Home
+                      </button>
+                    )}
+                    {deviceProfile.work && (
+                      <button onClick={() => routeToSavedLoc(deviceProfile.work)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white rounded-2xl flex items-center justify-center gap-2 border border-white/5 transition-all text-sm font-bold shadow-lg">
+                        <MapPin size={18} className="text-orange-500" /> Work
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {!isNavigating && selectedPlace && (
                   <div className="flex gap-2">
@@ -604,15 +678,23 @@ export default function App() {
                         </div>
                       </div>
                       <div className="flex flex-col gap-4">
-                        {navigationSteps.slice(0, 4).map((step, idx) => (
-                          <div key={idx} className="flex gap-5 p-5 rounded-3xl bg-white/5 border border-white/5 group hover:bg-white/10 transition-all">
-                            <div className="text-blue-500 font-black text-xs pt-1 opacity-50">{idx + 1}</div>
+                        {navigationSteps.slice(activeStepIndex, activeStepIndex + 3).map((step, idx) => (
+                          <div key={idx} className={`flex gap-5 p-5 rounded-3xl border transition-all ${idx === 0 ? 'bg-blue-500/10 border-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.15)]' : 'bg-white/5 border-white/5 opacity-60'}`}>
+                            <div className="text-blue-500 font-black text-xs pt-1 opacity-50">{activeStepIndex + idx + 1}</div>
                             <div className="flex flex-col gap-1.5 min-w-0">
                               <p className="text-base font-bold text-white/90 leading-snug" dangerouslySetInnerHTML={{ __html: step.instructions }} />
                               <span className="text-[11px] font-black text-zinc-500 uppercase tracking-widest">{step.distance.text}</span>
                             </div>
                           </div>
                         ))}
+                        {activeStepIndex < navigationSteps.length - 1 && (
+                          <button
+                            onClick={() => setActiveStepIndex(prev => prev + 1)}
+                            className="mt-2 py-3 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl text-sm transition-colors text-center"
+                          >
+                            Simulate Next Turn
+                          </button>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -682,11 +764,11 @@ export default function App() {
           {/* Dynamic Full-Bleed Background Overlay */}
           {playbackState?.item && (
             <div
-              className="absolute inset-0 opacity-40 transition-all duration-1000 pointer-events-none"
+              className="absolute inset-0 opacity-60 transition-all duration-1000 pointer-events-none"
               style={{
-                background: `radial-gradient(circle at 20% 20%, #${playbackState.item.id ? playbackState.item.id.slice(0, 6) : '1db954'}cc 0%, transparent 50%),
-                             radial-gradient(circle at 80% 80%, #000 0%, #000 100%),
-                             linear-gradient(180deg, rgba(0,0,0,0.8) 0%, #000 100%)`
+                background: `radial-gradient(circle at 0% 0%, #${playbackState.item.id ? playbackState.item.id.slice(0, 6) : '1db954'}88 0%, transparent 60%),
+                             radial-gradient(circle at 100% 100%, #${playbackState.item.id ? playbackState.item.id.slice(1, 7) : '1ed760'}44 0%, transparent 60%),
+                             linear-gradient(180deg, rgba(0,0,0,0.8) 0%, #050505 100%)`
               }}
             />
           )}
@@ -812,7 +894,7 @@ export default function App() {
                       initial={{ opacity: 0, x: 40 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -40 }}
-                      className="flex-1 flex flex-col pt-4 overflow-hidden"
+                      className="flex-1 flex flex-col pt-4 overflow-hidden min-h-0"
                     >
                       <div className="flex items-center gap-4 mb-8">
                         <div className="w-2 h-2 rounded-full bg-green-500" />
@@ -944,7 +1026,100 @@ export default function App() {
         )}
       </AnimatePresence>
 
+      <DeviceSettings show={showSettings} onClose={() => setShowSettings(false)} profile={deviceProfile} setProfile={setDeviceProfile} />
+
     </div>
+  );
+}
+
+// --- Device Settings Modal ---
+function DeviceSettings({ show, onClose, profile, setProfile }) {
+  const homeRef = useRef(null);
+  const workRef = useRef(null);
+
+  useEffect(() => {
+    const handlePlace = (type, e) => {
+      const place = e.target.value;
+      if (place && place.location) {
+        setProfile(prev => ({
+          ...prev, [type]: {
+            name: place.displayName || place.name,
+            lat: place.location.lat(),
+            lng: place.location.lng(),
+            address: place.formattedAddress
+          }
+        }));
+      }
+    };
+
+    const hr = homeRef.current;
+    const wr = workRef.current;
+
+    if (hr) hr.addEventListener('gmpx-placechange', (e) => handlePlace('home', e));
+    if (wr) wr.addEventListener('gmpx-placechange', (e) => handlePlace('work', e));
+
+    return () => {
+      if (hr) hr.removeEventListener('gmpx-placechange', handlePlace);
+      if (wr) wr.removeEventListener('gmpx-placechange', handlePlace);
+    };
+  }, [show, setProfile]);
+
+  return (
+    <AnimatePresence>
+      {show && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[150] bg-black/80 backdrop-blur-2xl flex p-10 justify-center items-center">
+          <div className="bg-[#111] border border-white/10 rounded-[3rem] p-12 w-full max-w-2xl shadow-2xl relative">
+            <button onClick={onClose} className="absolute top-8 right-8 w-12 h-12 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center transition-all"><X size={24} /></button>
+            <h2 className="text-4xl font-black text-white mb-8 flex items-center gap-4"><User size={40} className="text-purple-500" /> Device Profile</h2>
+
+            <div className="space-y-8">
+              <div className="bg-white/5 p-6 rounded-3xl border border-white/5 flex items-center justify-between">
+                <div>
+                  <h3 className="text-xl font-bold text-white mb-1">Google Account</h3>
+                  <p className="text-sm text-zinc-400 font-medium">{profile.isGoogleLinked ? 'Linked to your digital life' : 'Link for calendar and saved places'}</p>
+                </div>
+                <button
+                  onClick={() => setProfile(p => ({ ...p, isGoogleLinked: !p.isGoogleLinked }))}
+                  className={`px-6 py-3 rounded-full font-bold transition-all ${profile.isGoogleLinked ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30' : 'bg-blue-600 text-white hover:bg-blue-500'}`}
+                >
+                  {profile.isGoogleLinked ? 'UNLINK' : 'LINK ACCOUNT'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-6">
+                <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
+                  <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><MapPin size={20} className="text-blue-500" /> Home Address</h3>
+                  {profile.home ? (
+                    <div className="flex justify-between items-start">
+                      <div className="text-sm text-zinc-300 font-medium pr-4">{profile.home.address}</div>
+                      <button onClick={() => setProfile(p => ({ ...p, home: null }))} className="text-red-500 p-2 bg-red-500/10 rounded-full hover:bg-red-500/20 transition-all"><X size={16} /></button>
+                    </div>
+                  ) : (
+                    <div className="bg-white/5 p-2 rounded-xl focus-within:border-blue-500 transition-all border border-transparent">
+                      <gmpx-place-picker ref={homeRef} placeholder="Search home..." for-map="main-map" style={{ width: '100%', '--gmpx-color-surface': 'transparent', '--gmpx-color-on-surface': '#ffffff', '--gmpx-border-radius': '0' }}></gmpx-place-picker>
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
+                  <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><MapPin size={20} className="text-orange-500" /> Work Address</h3>
+                  {profile.work ? (
+                    <div className="flex justify-between items-start">
+                      <div className="text-sm text-zinc-300 font-medium pr-4">{profile.work.address}</div>
+                      <button onClick={() => setProfile(p => ({ ...p, work: null }))} className="text-red-500 p-2 bg-red-500/10 rounded-full hover:bg-red-500/20 transition-all"><X size={16} /></button>
+                    </div>
+                  ) : (
+                    <div className="bg-white/5 p-2 rounded-xl focus-within:border-orange-500 transition-all border border-transparent">
+                      <gmpx-place-picker ref={workRef} placeholder="Search work..." for-map="main-map" style={{ width: '100%', '--gmpx-color-surface': 'transparent', '--gmpx-color-on-surface': '#ffffff', '--gmpx-border-radius': '0' }}></gmpx-place-picker>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
