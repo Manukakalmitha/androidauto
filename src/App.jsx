@@ -506,8 +506,18 @@ export default function App() {
           volume: 0.5
         });
 
-        player.addListener('initialization_error', ({ message }) => { console.error("Init Error:", message); });
-        player.addListener('authentication_error', ({ message }) => { console.error("Auth Error:", message); });
+        player.addListener('initialization_error', ({ message }) => {
+          console.error("Init Error:", message);
+          if (message.includes("scopes")) {
+            setVoiceTranscript("⚠️ Spotify permissions out of date. Please Sign Out and Sign In again.");
+          }
+        });
+        player.addListener('authentication_error', ({ message }) => {
+          console.error("Auth Error:", message);
+          if (message.includes("scopes")) {
+            setVoiceTranscript("⚠️ Permission error. Please Sign Out/In.");
+          }
+        });
         player.addListener('account_error', ({ message }) => { console.error("Account Error:", message); });
         player.addListener('playback_error', ({ message }) => { console.error("Playback Error:", message); });
 
@@ -532,13 +542,28 @@ export default function App() {
       }, 1200); // Longer delay so DRM/EME init finishes first
     };
 
-    // Inject a guard BEFORE the SDK script runs so indexOf is never called on undefined
+    // Inject guards BEFORE the SDK script runs
     if (!window.__spotifySDKGuarded) {
       window.__spotifySDKGuarded = true;
+      // Guard 1: indexOf crash
       const _origIndexOf = String.prototype.indexOf;
       String.prototype.indexOf = function (...args) {
         if (this == null) return -1;
         return _origIndexOf.apply(this, args);
+      };
+      // Guard 2: JSON.parse crash on "Too many requests" or non-JSON errors
+      const _origParse = JSON.parse;
+      JSON.parse = function (text, reviver) {
+        if (typeof text !== 'string') return _origParse.apply(JSON, arguments);
+        try {
+          return _origParse.apply(JSON, arguments);
+        } catch (e) {
+          if (text.includes('Too many requests') || text.includes('rate limit') || text.startsWith('Too')) {
+            console.warn("Spotify: Safely caught non-JSON rate limit response.");
+            return { error: 'rate_limited', message: text };
+          }
+          throw e; // Let other parse errors bubble
+        }
       };
     }
 
@@ -566,8 +591,11 @@ export default function App() {
           if (state && state.item) {
             setPlaybackState(normalizePlaybackState(state));
           }
-        }).catch(err => console.error("Spotify playback error:", err));
-      }, 3000);
+        }).catch(err => {
+          if (err.status === 401) logoutFromSpotify();
+          if (err.status !== 429) console.error("Spotify playback error:", err);
+        });
+      }, 6000); // Slower polling to avoid 429
       return () => clearInterval(interval);
     }
   }, [spotifyToken]);
@@ -577,7 +605,6 @@ export default function App() {
       spotifyApi.getUserPlaylists().then(data => {
         if (data && data.items) setPlaylists(data.items);
       }).catch(err => {
-        // Silently consume rate limit/parse errors
         if (err.status !== 429) console.error("Error fetching playlists:", err);
       });
 
@@ -600,7 +627,7 @@ export default function App() {
         }
       };
       fetchQueue();
-      const qInterval = setInterval(fetchQueue, 20000);
+      const qInterval = setInterval(fetchQueue, 45000); // Much slower queue polling
       return () => clearInterval(qInterval);
     }
   }, [spotifyToken, playbackState?.item?.id]);
