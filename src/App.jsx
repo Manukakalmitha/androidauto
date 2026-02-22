@@ -100,6 +100,8 @@ export default function App() {
   const [showAppDrawer, setShowAppDrawer] = useState(false);
   const [playbackState, setPlaybackState] = useState(null);
   const [selectedPlace, setSelectedPlace] = useState(null);
+  const [showDirectionsPanel, setShowDirectionsPanel] = useState(false);
+  const [originPlace, setOriginPlace] = useState(null); // 'CURRENT_LOCATION' or place object
   const [isNavigating, setIsNavigating] = useState(false);
   const [travelMode, setTravelMode] = useState('DRIVING');
   const [routes, setRoutes] = useState([]);
@@ -130,6 +132,8 @@ export default function App() {
   // Refs for Maps Components
   const mapRef = useRef(null);
   const pickerRef = useRef(null);
+  const originPickerRef = useRef(null);
+  const destinationPickerRef = useRef(null);
   const markerRef = useRef(null);
   const directionsRendererRef = useRef(null);
   const infoWindowRef = useRef(null);
@@ -407,57 +411,94 @@ export default function App() {
   useEffect(() => {
     const picker = pickerRef.current;
     if (picker) {
-      const listener = (event) => {
-        handlePlaceChange(event);
-      };
+      const listener = (event) => handlePlaceChange(event, 'destination');
       picker.addEventListener('gmpx-placechange', listener);
       return () => { picker && picker.removeEventListener('gmpx-placechange', listener); };
     }
   }, [pickerRef.current]);
 
-  const handlePlaceChange = (e) => {
+  useEffect(() => {
+    const op = originPickerRef.current;
+    if (op) {
+      const listener = (event) => {
+        const place = event.target.value;
+        if (place && place.location) {
+          setOriginPlace(place);
+          if (selectedPlace) fetchRoutes(selectedPlace, travelMode, place);
+        }
+      };
+      op.addEventListener('gmpx-placechange', listener);
+      return () => { op && op.removeEventListener('gmpx-placechange', listener); };
+    }
+  }, [originPickerRef.current, selectedPlace, travelMode]);
+
+  useEffect(() => {
+    const dp = destinationPickerRef.current;
+    if (dp) {
+      const listener = (event) => handlePlaceChange(event, 'destination');
+      dp.addEventListener('gmpx-placechange', listener);
+      return () => { dp && dp.removeEventListener('gmpx-placechange', listener); };
+    }
+  }, [destinationPickerRef.current]);
+
+  const handlePlaceChange = (e, type = 'destination') => {
     const picker = e.target;
     const place = picker.value;
     if (!place || !place.location) {
-      setSelectedPlace(null);
-      setRoutes([]);
-      if (infoWindowRef.current) infoWindowRef.current.close();
+      if (type === 'destination') {
+        setSelectedPlace(null);
+        setRoutes([]);
+        if (infoWindowRef.current) infoWindowRef.current.close();
+      } else {
+        setOriginPlace(null);
+      }
       return;
     }
 
-    setSelectedPlace(place);
+    if (type === 'destination') {
+      setSelectedPlace(place);
+    } else {
+      setOriginPlace(place);
+    }
+
     const mapEl = mapRef.current;
     if (!mapEl) return;
 
     if (place.viewport) {
       mapEl.innerMap.fitBounds(place.viewport);
-      setTimeout(() => { mapEl.tilt = 45; }, 500); // Re-apply tilt after fitBounds
+      setTimeout(() => { mapEl.tilt = 45; }, 500);
     } else {
       mapEl.center = place.location;
       mapEl.zoom = 17;
       mapEl.tilt = 45;
     }
 
-    if (markerRef.current) {
+    if (markerRef.current && type === 'destination') {
       markerRef.current.position = place.location;
     }
 
-    // Show InfoWindow
-    if (window.google && !infoWindowRef.current) {
-      infoWindowRef.current = new window.google.maps.InfoWindow();
-    }
-    if (infoWindowRef.current) {
-      infoWindowRef.current.setContent(`
-        <div style="padding: 8px; color: #000;">
-          <strong style="font-size: 14px;">${place.displayName || place.name}</strong><br/>
-          <span style="font-size: 12px; opacity: 0.8;">${place.formattedAddress}</span>
-        </div>
-      `);
-      infoWindowRef.current.open(mapEl.innerMap, markerRef.current);
+    // Show InfoWindow only for destination
+    if (type === 'destination') {
+      if (window.google && !infoWindowRef.current) {
+        infoWindowRef.current = new window.google.maps.InfoWindow();
+      }
+      if (infoWindowRef.current) {
+        infoWindowRef.current.setContent(`
+          <div style="padding: 8px; color: #000;">
+            <strong style="font-size: 14px;">${place.displayName || place.name}</strong><br/>
+            <span style="font-size: 12px; opacity: 0.8;">${place.formattedAddress}</span>
+          </div>
+        `);
+        infoWindowRef.current.open(mapEl.innerMap, markerRef.current);
+      }
     }
 
-    // Auto-fetch routes when place changes
-    fetchRoutes(place, travelMode);
+    // Auto-fetch routes
+    if (type === 'destination') {
+      fetchRoutes(place, travelMode, originPlace);
+    } else if (selectedPlace) {
+      fetchRoutes(selectedPlace, travelMode, place);
+    }
   };
 
   const routeToSavedLoc = (savedLoc) => {
@@ -476,7 +517,16 @@ export default function App() {
     }
   };
 
-  const fetchRoutes = async (place, mode) => {
+  const swapLocations = () => {
+    if (originPlace && originPlace !== 'CURRENT_LOCATION' && selectedPlace) {
+      const tempOrigin = originPlace;
+      setOriginPlace(selectedPlace);
+      setSelectedPlace(tempOrigin);
+      fetchRoutes(tempOrigin, travelMode, selectedPlace);
+    }
+  };
+
+  const fetchRoutes = async (place, mode, customOrigin = originPlace) => {
     if (!place || !place.location || !currentCoords) return;
 
     const { DirectionsService, DirectionsRenderer } = await google.maps.importLibrary("routes");
@@ -495,8 +545,13 @@ export default function App() {
     }
 
     const service = new DirectionsService();
+    let routeOrigin = { lat: currentCoords.latitude, lng: currentCoords.longitude };
+    if (customOrigin && customOrigin !== 'CURRENT_LOCATION' && customOrigin.location) {
+      routeOrigin = customOrigin.location;
+    }
+
     service.route({
-      origin: { lat: currentCoords.latitude, lng: currentCoords.longitude },
+      origin: routeOrigin,
       destination: place.location,
       travelMode: mode, // TravelMode strings are accepted directly
       provideRouteAlternatives: true
@@ -638,32 +693,122 @@ export default function App() {
             <div className="bg-[#2a2d32]/95 backdrop-blur-3xl rounded-[28px] shadow-2xl pointer-events-auto overflow-hidden flex flex-col border border-white/10">
 
               <div className="p-4 flex flex-col">
-                {/* Search Pill */}
-                <div className="bg-[#3b3e44] h-14 rounded-full flex items-center px-4 mb-4 focus-within:ring-2 focus-within:ring-blue-500/50 transition-all shadow-inner">
-                  <GoogleMapsLogo size={24} className="mr-3 drop-shadow-sm" />
-                  <div className="flex-1 overflow-hidden">
-                    <gmpx-place-picker
-                      ref={pickerRef}
-                      placeholder="Search"
-                      for-map="main-map"
-                      style={{
-                        width: '100%',
-                        '--gmpx-color-surface': 'transparent',
-                        '--gmpx-color-on-surface': '#ffffff',
-                        '--gmpx-border-radius': '0',
-                        '--gmpx-font-family': 'Inter, sans-serif',
-                        '--gmpx-font-size-base': '1.05rem',
-                        '--gmpx-placeholder-color': '#a1a1aa'
-                      }}
-                    ></gmpx-place-picker>
-                  </div>
-                  <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center ml-2 text-white/80 shrink-0">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
-                  </div>
-                </div>
+                {showDirectionsPanel ? (
+                  <div className="flex flex-col animate-in fade-in slide-in-from-top-2 duration-300">
+                    {/* Travel Modes - Horizontal Scroll */}
+                    <div className="flex items-center gap-2 pb-5 border-b border-white/10 mb-5 px-2">
+                      <button className="w-10 h-10 rounded-full flex items-center justify-center bg-teal-600 text-white shrink-0 shadow shadow-teal-900/50"><Compass size={20} /></button>
+                      {[
+                        { id: 'DRIVING', icon: <Car size={20} /> },
+                        { id: 'BICYCLING', icon: <Bike size={20} /> },
+                        { id: 'TRANSIT', icon: <BusFront size={20} /> },
+                        { id: 'WALKING', icon: <Footprints size={20} /> }
+                      ].map(mode => (
+                        <button key={mode.id} onClick={() => { setTravelMode(mode.id); if (selectedPlace) fetchRoutes(selectedPlace, mode.id, originPlace); }} className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${travelMode === mode.id ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}>{mode.icon}</button>
+                      ))}
+                      <button className="ml-auto w-10 h-10 flex items-center justify-center text-zinc-500 hover:text-white rounded-full bg-white/5 hover:bg-white/10 transition-colors" onClick={() => setShowDirectionsPanel(false)}><X size={20} /></button>
+                    </div>
 
-                {/* Suggestions: Home & Work */}
-                {!isNavigating && !selectedPlace && (deviceProfile.home || deviceProfile.work) && (
+                    {/* Inputs Group */}
+                    <div className="flex items-stretch gap-3 mb-2 relative">
+                      <div className="flex flex-col items-center justify-between py-5 px-1">
+                        <div className="w-3 h-3 rounded-full border-[3px] border-zinc-500"></div>
+                        <div className="flex flex-col gap-1.5 my-1">
+                          <div className="w-1 h-1 rounded-full bg-zinc-600"></div>
+                          <div className="w-1 h-1 rounded-full bg-zinc-600"></div>
+                          <div className="w-1 h-1 rounded-full bg-zinc-600"></div>
+                        </div>
+                        <MapPin size={18} className="text-red-500 drop-shadow-md" />
+                      </div>
+
+                      <div className="flex-1 flex flex-col gap-2.5">
+                        <div className={`h-[50px] rounded-xl px-2 flex items-center transition-all bg-[#3b3e44] ${!originPlace ? 'ring-2 ring-teal-500 border border-teal-500' : 'border border-white/10'}`}>
+                          <div className="flex-1 overflow-hidden">
+                            <gmpx-place-picker
+                              ref={originPickerRef}
+                              placeholder={originPlace === 'CURRENT_LOCATION' ? 'Your location' : 'Choose starting point...'}
+                              for-map="main-map"
+                              style={{
+                                width: '100%',
+                                '--gmpx-color-surface': 'transparent',
+                                '--gmpx-color-on-surface': '#ffffff',
+                                '--gmpx-border-radius': '0',
+                                '--gmpx-font-family': 'Inter, sans-serif',
+                                '--gmpx-font-size-base': '0.95rem',
+                                '--gmpx-placeholder-color': originPlace === 'CURRENT_LOCATION' ? '#ffffff' : '#a1a1aa'
+                              }}
+                            ></gmpx-place-picker>
+                          </div>
+                        </div>
+                        <div className="h-[50px] rounded-xl px-2 bg-[#3b3e44] flex items-center border border-white/10">
+                          <div className="flex-1 overflow-hidden">
+                            <gmpx-place-picker
+                              ref={destinationPickerRef}
+                              placeholder="Choose destination..."
+                              for-map="main-map"
+                              value={selectedPlace}
+                              style={{
+                                width: '100%',
+                                '--gmpx-color-surface': 'transparent',
+                                '--gmpx-color-on-surface': '#ffffff',
+                                '--gmpx-border-radius': '0',
+                                '--gmpx-font-family': 'Inter, sans-serif',
+                                '--gmpx-font-size-base': '0.95rem',
+                                '--gmpx-placeholder-color': '#a1a1aa'
+                              }}
+                            ></gmpx-place-picker>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-center pl-1 pr-2">
+                        <button onClick={swapLocations} className="w-10 h-10 rounded-full flex items-center justify-center text-zinc-400 hover:text-white transition-all active:scale-90">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="16 3 21 8 16 13"></polyline><line x1="21" y1="8" x2="9" y2="8"></line><polyline points="8 21 3 16 8 11"></polyline><line x1="3" y1="16" x2="15" y2="16"></line></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Search Pill */}
+                    <div className="bg-[#3b3e44] h-14 rounded-full flex items-center px-4 mb-4 focus-within:ring-2 focus-within:ring-blue-500/50 transition-all shadow-inner border border-white/5">
+                      <GoogleMapsLogo size={24} className="mr-3 drop-shadow-sm" />
+                      <div className="flex-1 overflow-hidden">
+                        <gmpx-place-picker
+                          ref={pickerRef}
+                          placeholder="Search Google Maps"
+                          for-map="main-map"
+                          style={{
+                            width: '100%',
+                            '--gmpx-color-surface': 'transparent',
+                            '--gmpx-color-on-surface': '#ffffff',
+                            '--gmpx-border-radius': '0',
+                            '--gmpx-font-family': 'Inter, sans-serif',
+                            '--gmpx-font-size-base': '1.05rem',
+                            '--gmpx-placeholder-color': '#a1a1aa'
+                          }}
+                        ></gmpx-place-picker>
+                      </div>
+                      <button onClick={() => setShowDirectionsPanel(true)} className="w-[38px] h-[38px] rounded-full bg-[#1e88e5] flex items-center justify-center ml-2 text-white shrink-0 shadow-lg hover:scale-105 active:scale-95 transition-all">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L22 12l-10 10L2 12Z" /><path d="M10 16v-4h4v-4" stroke="black" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" className="opacity-40" /><polyline points="10 16 14 12 10 8" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {/* Suggestions: Contextual Rendering */}
+                {showDirectionsPanel && !originPlace && (
+                  <div className="mt-4 pt-1 border-t border-white/10 px-1">
+                    <button onClick={() => { setOriginPlace('CURRENT_LOCATION'); if (selectedPlace) fetchRoutes(selectedPlace, travelMode, 'CURRENT_LOCATION'); }} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-white/5 transition-colors text-left active:bg-white/10 group w-full">
+                      <div className="w-12 h-12 rounded-full bg-[#c2e7ff] flex items-center justify-center flex-shrink-0 text-[#001d35] group-hover:bg-[#b0d9f5] transition-all shadow-sm">
+                        <Compass size={24} strokeWidth={2.5} />
+                      </div>
+                      <span className="text-white font-semibold text-[15px] tracking-wide">Your location</span>
+                    </button>
+                  </div>
+                )}
+
+                {!showDirectionsPanel && !isNavigating && !selectedPlace && (deviceProfile.home || deviceProfile.work) && (
                   <div className="flex flex-col gap-1 px-1">
                     {deviceProfile.home && (
                       <button onClick={() => routeToSavedLoc(deviceProfile.home)} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-white/10 transition-colors text-left active:bg-white/20">
