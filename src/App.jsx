@@ -391,7 +391,15 @@ export default function App() {
 
       // Use direct property assignment to avoid React stringification issues
       mapEl.center = coords;
-      mapEl.zoom = 13;
+      mapEl.zoom = 15;
+      mapEl.tilt = 45; // Driver perspective tilt
+      mapEl.mapId = "DEMO_MAP_ID"; // Required for advanced markers/styling
+
+      // Enforce clean minimal UI
+      mapEl.innerMap?.setOptions({
+        disableDefaultUI: true,
+        isFractionalZoomEnabled: true,
+      });
     }
   }, [currentCoords]);
   useEffect(() => {
@@ -421,9 +429,11 @@ export default function App() {
 
     if (place.viewport) {
       mapEl.innerMap.fitBounds(place.viewport);
+      setTimeout(() => { mapEl.tilt = 45; }, 500); // Re-apply tilt after fitBounds
     } else {
       mapEl.center = place.location;
       mapEl.zoom = 17;
+      mapEl.tilt = 45;
     }
 
     if (markerRef.current) {
@@ -594,10 +604,10 @@ export default function App() {
       </nav>
 
       {/* Main Split Content Area */}
-      <main className="flex-1 flex overflow-hidden p-4 gap-4 bg-[#0a0a0a]">
+      <main className="flex-1 flex overflow-hidden p-3 gap-3 bg-[#0a0a0a]">
 
-        {/* Map Section (Left side - Floating Overlays) */}
-        <div className="flex-[1.8] relative rounded-[3.5rem] overflow-hidden border border-white/5 bg-[#121212] premium-shadow">
+        {/* Map Section (Dominant 70% Width) */}
+        <div className="w-[70%] relative rounded-2xl overflow-hidden shadow-md bg-[#121212]">
           <gmp-map
             ref={mapRef}
             id="main-map"
@@ -607,12 +617,12 @@ export default function App() {
             <gmp-advanced-marker ref={markerRef}></gmp-advanced-marker>
           </gmp-map>
 
-          {/* Floating Map Search/Directions Card */}
-          <div className="absolute top-8 left-8 w-[440px] max-h-[calc(100%-64px)] pointer-events-none flex flex-col gap-4 z-50">
-            <div className="glass-panel rounded-[3rem] shadow-[0_40px_100px_rgba(0,0,0,0.6)] pointer-events-auto overflow-hidden flex flex-col border-t border-white/20">
-              <div className="p-8 border-b border-white/5 flex flex-col gap-6">
-                <div className="flex items-center gap-4 bg-white/5 p-2 rounded-3xl border border-white/5 focus-within:border-blue-500/50 transition-all">
-                  <Navigation size={24} className="text-blue-500 ml-4" />
+          {/* Floating Map Search/Directions Card (Left/Driver side alignment) */}
+          <div className="absolute top-6 left-6 w-[400px] max-h-[calc(100%-48px)] pointer-events-none flex flex-col gap-3 z-50">
+            <div className="bg-[#1e1e1e]/95 backdrop-blur-xl rounded-2xl shadow-xl pointer-events-auto overflow-hidden flex flex-col border border-white/5">
+              <div className="flex justify-between items-center mb-6 px-6 pt-6">
+                <div className="flex items-center gap-4 bg-white/5 p-3 rounded-2xl border border-white/5 focus-within:border-blue-500/50 transition-all w-full">
+                  <Navigation size={28} className="text-blue-500 ml-2" />
                   <div className="flex-1">
                     <gmpx-place-picker
                       ref={pickerRef}
@@ -632,13 +642,15 @@ export default function App() {
                 {!isNavigating && !selectedPlace && (deviceProfile.home || deviceProfile.work) && (
                   <div className="flex gap-4">
                     {deviceProfile.home && (
-                      <button onClick={() => routeToSavedLoc(deviceProfile.home)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white rounded-2xl flex items-center justify-center gap-2 border border-white/5 transition-all text-sm font-bold shadow-lg">
-                        <MapPin size={18} className="text-blue-500" /> Home
+                      <button onClick={() => routeToSavedLoc(deviceProfile.home)} className="flex-1 py-4 bg-white/5 hover:bg-white/10 text-white rounded-xl flex flex-col items-center justify-center gap-1 border border-white/5 transition-all shadow-sm">
+                        <MapPin size={24} className="text-blue-500" />
+                        <span className="text-xs font-bold">Home</span>
                       </button>
                     )}
                     {deviceProfile.work && (
-                      <button onClick={() => routeToSavedLoc(deviceProfile.work)} className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-white rounded-2xl flex items-center justify-center gap-2 border border-white/5 transition-all text-sm font-bold shadow-lg">
-                        <MapPin size={18} className="text-orange-500" /> Work
+                      <button onClick={() => routeToSavedLoc(deviceProfile.work)} className="flex-1 py-4 bg-white/5 hover:bg-white/10 text-white rounded-xl flex flex-col items-center justify-center gap-1 border border-white/5 transition-all shadow-sm">
+                        <MapPin size={24} className="text-orange-500" />
+                        <span className="text-xs font-bold">Work</span>
                       </button>
                     )}
                   </div>
@@ -716,50 +728,26 @@ export default function App() {
                   )}
                 </div>
               )}
-
-              {selectedPlace && (
-                <div className="p-8 bg-white/5 border-t border-white/5 backdrop-blur-3xl">
-                  {!isNavigating ? (
-                    <button
-                      onClick={startNavigation}
-                      className="w-full py-6 bg-blue-600 text-white font-black tracking-[0.2em] rounded-[2rem] flex items-center justify-center gap-4 active:scale-95 transition-all shadow-2xl shadow-blue-600/30 text-lg"
-                    >
-                      <Navigation size={26} fill="white" />
-                      START TRIP
-                    </button>
-                  ) : (
-                    <button
-                      onClick={endNavigation}
-                      className="w-full py-6 bg-red-600 text-white font-black tracking-[0.2em] rounded-[2rem] flex items-center justify-center gap-4 active:scale-95 transition-all shadow-2xl shadow-red-600/30 text-lg"
-                    >
-                      <X size={26} />
-                      END TRIP
-                    </button>
-                  )
-                  }
-                </div>
-              )}
             </div>
-          </div>
-
-          {/* Map Controls */}
-          <div className="absolute right-10 bottom-10 flex flex-col gap-6 z-50">
-            <div className="bg-black/90 backdrop-blur-2xl p-4 rounded-3xl border border-white/10 flex flex-col gap-8 items-center shadow-3xl">
-              <button className="text-zinc-500 hover:text-white transition-all text-3xl font-light hover:scale-125" onClick={() => mapRef.current.innerMap.setZoom(mapRef.current.innerMap.getZoom() + 1)}>+</button>
-              <div className="w-6 h-[1px] bg-white/10" />
-              <button className="text-zinc-500 hover:text-white transition-all text-3xl font-light hover:scale-125" onClick={() => mapRef.current.innerMap.setZoom(mapRef.current.innerMap.getZoom() - 1)}>−</button>
-            </div>
-            <button
-              onClick={() => { if (currentCoords) mapRef.current.center = { lat: currentCoords.latitude, lng: currentCoords.longitude }; }}
-              className="w-20 h-20 bg-blue-600 text-white rounded-full flex items-center justify-center shadow-3xl active:scale-90 transition-all group"
-            >
-              <Navigation size={34} className="rotate-45 group-hover:scale-110 transition-transform" />
-            </button>
           </div>
         </div>
 
-        {/* Media Player Section (Right side - Split screen) */}
-        <div className="flex-1 rounded-[3.5rem] overflow-hidden border border-white/5 bg-[#050505] relative flex flex-col premium-shadow transition-all duration-700">
+        {/* Map Controls */}
+        <div className="absolute right-6 bottom-6 flex flex-col gap-4 z-50">
+          <div className="bg-[#1e1e1e]/90 backdrop-blur-md p-2 rounded-2xl border border-white/10 flex flex-col items-center shadow-lg">
+            <button className="w-12 h-12 flex items-center justify-center text-zinc-400 hover:text-white transition-all text-2xl active:bg-white/5 rounded-xl" onClick={() => mapRef.current.innerMap.setZoom(mapRef.current.innerMap.getZoom() + 1)}>+</button>
+            <div className="w-8 h-[1px] bg-white/10 my-1" />
+            <button className="w-12 h-12 flex items-center justify-center text-zinc-400 hover:text-white transition-all text-2xl active:bg-white/5 rounded-xl" onClick={() => mapRef.current.innerMap.setZoom(mapRef.current.innerMap.getZoom() - 1)}>−</button>
+          </div>
+          <button
+            onClick={() => { if (currentCoords) mapRef.current.center = { lat: currentCoords.latitude, lng: currentCoords.longitude }; }}
+            className="w-16 h-16 bg-[#1e1e1e] border border-white/10 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-all group"
+          >
+            <Navigation size={24} strokeWidth={2.5} className="rotate-45" />
+          </button>
+        </div>
+        {/* Media Player Section (Secondary 30% Panel) */}
+        <div className="w-[30%] min-w-[320px] rounded-2xl overflow-hidden bg-[#1e1e1e] relative flex flex-col shadow-md transition-all duration-700">
 
           {/* Dynamic Full-Bleed Background Overlay */}
           {playbackState?.item && (
@@ -767,120 +755,111 @@ export default function App() {
               className="absolute inset-0 opacity-60 transition-all duration-1000 pointer-events-none"
               style={{
                 background: `radial-gradient(circle at 0% 0%, #${playbackState.item.id ? playbackState.item.id.slice(0, 6) : '1db954'}88 0%, transparent 60%),
-                             radial-gradient(circle at 100% 100%, #${playbackState.item.id ? playbackState.item.id.slice(1, 7) : '1ed760'}44 0%, transparent 60%),
-                             linear-gradient(180deg, rgba(0,0,0,0.8) 0%, #050505 100%)`
+                               radial-gradient(circle at 100% 100%, #${playbackState.item.id ? playbackState.item.id.slice(1, 7) : '1ed760'}44 0%, transparent 60%),
+                               linear-gradient(180deg, rgba(0,0,0,0.8) 0%, #050505 100%)`
               }}
             />
           )}
 
           {!spotifyToken ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-16 relative z-10 text-center">
-              <div className="w-40 h-40 bg-green-500 rounded-full flex items-center justify-center shadow-[0_0_80px_rgba(34,197,94,0.4)] mb-12">
-                <Music2 size={80} className="text-black" />
+            <div className="flex-1 flex flex-col items-center justify-center p-8 relative z-10 text-center">
+              <div className="w-24 h-24 bg-green-500 rounded-2xl flex items-center justify-center shadow-lg mb-8">
+                <Music2 size={48} className="text-black" />
               </div>
-              <h2 className="text-5xl font-black text-white mb-6 tracking-tighter">Stay Connected</h2>
-              <button onClick={loginToSpotify} className="px-14 py-6 bg-white text-black font-black rounded-full text-xl tracking-[0.2em] hover:scale-105 active:scale-95 transition-all shadow-3xl">LINK SPOTIFY</button>
+              <h2 className="text-2xl font-bold text-white mb-6">Media Access</h2>
+              <button onClick={loginToSpotify} className="w-full h-16 bg-white text-black font-extrabold rounded-xl text-sm tracking-wide active:scale-95 transition-all">LINK SPOTIFY</button>
             </div>
           ) : (
             <div className="flex-1 flex flex-col p-12 relative z-10">
 
-              {/* Media Header */}
-              <div className="flex justify-between items-center mb-12">
-                <div className="flex items-center gap-4">
-                  <SpotifyLogo size={40} />
-                  <div className="flex flex-col">
-                    <span className="text-[11px] font-black text-white tracking-[0.3em] uppercase leading-none">Spotify</span>
-                    <span className="text-[9px] font-bold text-white/30 tracking-widest uppercase mt-1">Dash Player Alpha</span>
-                  </div>
+              <div className="flex justify-between items-center mb-6 px-6 pt-6">
+                <div className="flex items-center gap-3">
+                  <SpotifyLogo size={24} />
+                  <span className="text-sm font-bold text-white opacity-90">Spotify</span>
                 </div>
-                <div className="flex gap-4">
+                <div className="flex gap-2">
                   <button
                     onClick={() => setShowSpotifyBrowser(!showSpotifyBrowser)}
-                    className={`w-14 h-14 rounded-full border flex items-center justify-center transition-all ${showSpotifyBrowser ? 'bg-green-500 text-black border-none shadow-xl shadow-green-500/20' : 'bg-white/5 text-white border-white/5 hover:bg-white/10'}`}
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${showSpotifyBrowser ? 'bg-green-500 text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
                   >
-                    <LayoutGrid size={24} />
+                    <LayoutGrid size={20} />
                   </button>
-                  <button onClick={logoutFromSpotify} className="w-14 h-14 rounded-full border border-white/5 bg-white/5 text-white/30 hover:text-white transition-all"><LogOut size={22} /></button>
                 </div>
               </div>
 
               {/* Main Media Content */}
-              <div className="flex-1 flex flex-col min-h-0">
+              <div className="flex-1 flex flex-col min-h-0 bg-[#1e1e1e]">
                 <AnimatePresence mode="wait">
                   {!showSpotifyBrowser ? (
                     <motion.div
                       key="player"
-                      initial={{ opacity: 0, scale: 0.95 }}
+                      initial={{ opacity: 0, scale: 0.98 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.95 }}
-                      className="flex-1 flex flex-col justify-center gap-12"
+                      exit={{ opacity: 0, scale: 0.98 }}
+                      className="flex-1 flex flex-col p-6"
                     >
                       {playbackState?.item ? (
-                        <div className="space-y-10">
-                          <motion.div
-                            layoutId="art"
-                            className="w-full aspect-square rounded-[3.5rem] overflow-hidden shadow-[0_50px_100px_rgba(0,0,0,0.8)] border border-white/10 relative group mx-auto max-w-[420px]"
-                          >
-                            <img src={playbackState.item.album.images[0].url} alt="Cover" className="w-full h-full object-cover transition-transform duration-[2000ms] group-hover:scale-110" />
-                            <div className="absolute inset-0 bg-black/20 group-hover:bg-transparent transition-all pointer-events-none" />
+                        <div className="flex-1 flex flex-col min-h-0">
 
-                            {/* In-Art Visualizer */}
-                            <div className="absolute bottom-10 left-10 z-20">
-                              <Visualizer isPlaying={playbackState.is_playing} />
+                          {/* Giant Artwork Anchor */}
+                          <div className="flex-1 min-h-0 min-w-0 w-full rounded-2xl overflow-hidden shadow-lg relative group mb-6">
+                            <img src={playbackState.item.album.images[0].url} alt="Cover" className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-gradient-to-t from-[#1e1e1e] to-transparent opacity-80 pointer-events-none" />
+                          </div>
+
+                          {/* Track Info (High Contrast) */}
+                          <div className="flex justify-between items-end gap-4 mb-8">
+                            <div className="flex-1 min-w-0">
+                              <h1 className="text-2xl font-bold text-white tracking-tight truncate">
+                                {playbackState.item.name}
+                              </h1>
+                              <p className="text-base font-medium text-zinc-400 truncate mt-1">{playbackState.item.artists[0].name}</p>
                             </div>
-                          </motion.div>
+                            <button
+                              onClick={toggleLike}
+                              className={`p-3 rounded-full transition-all active:scale-90 ${isLiked ? 'text-green-500 bg-green-500/10' : 'text-zinc-400 bg-white/5 hover:text-white'}`}
+                            >
+                              <Heart size={24} fill={isLiked ? "currentColor" : "none"} strokeWidth={2} />
+                            </button>
+                          </div>
 
-                          <div className="space-y-4 px-6 relative">
-                            <div className="flex justify-between items-start gap-8">
-                              <div className="flex-1 min-w-0 text-left">
-                                <h1 className="text-5xl font-black text-white tracking-tight leading-tight whitespace-nowrap overflow-hidden">
-                                  {playbackState.item.name.length > 20 ? (
-                                    <motion.div
-                                      animate={{ x: [0, -100, 0] }}
-                                      transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
-                                    >
-                                      {playbackState.item.name}
-                                    </motion.div>
-                                  ) : playbackState.item.name}
-                                </h1>
-                                <p className="text-2xl font-bold text-white/40 tracking-tight mt-2">{playbackState.item.artists[0].name}</p>
-                              </div>
-                              <button
-                                onClick={toggleLike}
-                                className={`mt-2 transition-all duration-300 ${isLiked ? 'text-green-500 scale-125' : 'text-white/20 hover:text-white'}`}
-                              >
-                                <Heart size={44} fill={isLiked ? "currentColor" : "none"} strokeWidth={2.5} />
-                              </button>
+                          {/* Thick Progress Bar */}
+                          <div className="space-y-3 mb-8">
+                            <div
+                              onClick={handleSeek}
+                              className="h-6 bg-black/40 rounded-full overflow-hidden relative cursor-pointer group"
+                            >
+                              <motion.div
+                                className="h-full bg-white transition-colors"
+                                animate={{ width: `${(playbackState.progress_ms / playbackState.item.duration_ms) * 100}%` }}
+                              />
+                            </div>
+                            <div className="flex justify-between text-xs font-bold text-zinc-500">
+                              <span>{fmtMs(playbackState.progress_ms)}</span>
+                              <span>{fmtMs(playbackState.item.duration_ms)}</span>
                             </div>
                           </div>
 
-                          {/* Up Next Preview */}
-                          {upNext && !showSpotifyBrowser && (
-                            <motion.div
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="px-6 py-4 bg-white/5 rounded-3xl border border-white/5 flex items-center justify-between"
-                            >
-                              <div className="flex flex-col gap-0.5 min-w-0">
-                                <span className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em]">Up Next</span>
-                                <span className="text-sm font-bold text-white/60 truncate">{upNext.name} • {upNext.artists[0].name}</span>
-                              </div>
-                              <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 border border-white/10 opacity-60">
-                                <img src={upNext.album.images[0].url} alt="" className="w-full h-full object-cover" />
-                              </div>
-                            </motion.div>
-                          )}
+                          {/* Jumbo Controls */}
+                          <div className="flex justify-between items-center px-4">
+                            <button onClick={() => spotifyApi.skipToPrevious()} className="p-4 text-white opacity-80 hover:opacity-100 active:scale-95 transition-all bg-white/5 rounded-full"><SkipBack size={32} fill="currentColor" /></button>
+                            <button onClick={() => (playbackState.is_playing ? spotifyApi.pause() : spotifyApi.play())} className="w-24 h-24 bg-green-500 text-black rounded-full flex items-center justify-center active:scale-95 transition-all shadow-lg">
+                              {playbackState.is_playing ? <Pause size={40} fill="currentColor" /> : <Play size={40} fill="currentColor" className="ml-1" />}
+                            </button>
+                            <button onClick={() => spotifyApi.skipToNext()} className="p-4 text-white opacity-80 hover:opacity-100 active:scale-95 transition-all bg-white/5 rounded-full"><SkipForward size={32} fill="currentColor" /></button>
+                          </div>
+
                         </div>
                       ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center gap-10">
-                          <div className="w-32 h-32 bg-white/5 rounded-full flex items-center justify-center text-white/10 animate-pulse">
-                            <Music2 size={64} />
+                        <div className="flex-1 flex flex-col items-center justify-center gap-6">
+                          <div className="w-20 h-20 bg-white/5 rounded-2xl flex items-center justify-center text-zinc-600">
+                            <Music2 size={32} />
                           </div>
-                          <p className="text-xl font-black text-white/20 uppercase tracking-[0.4em]">{isPlayerReady ? 'Dashboard Active' : 'Waiting for Device'}</p>
+                          <p className="text-sm font-bold text-zinc-500 uppercase tracking-widest">{isPlayerReady ? 'Dashboard Ready' : 'Connecting...'}</p>
                           {isPlayerReady && !playbackState?.item && (
                             <button
                               onClick={transferPlayback}
-                              className="px-12 py-5 bg-green-500 text-black font-black rounded-full tracking-[0.2em] hover:scale-110 active:scale-95 transition-all"
+                              className="px-8 py-4 bg-green-500 text-black font-extrabold rounded-xl text-sm transition-all"
                             >
                               START PLAYER
                             </button>
@@ -891,40 +870,34 @@ export default function App() {
                   ) : (
                     <motion.div
                       key="browser"
-                      initial={{ opacity: 0, x: 40 }}
+                      initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -40 }}
-                      className="flex-1 flex flex-col pt-4 overflow-hidden min-h-0"
+                      exit={{ opacity: 0, x: -20 }}
+                      className="flex-1 flex flex-col pt-2 pb-6 px-6 overflow-hidden min-h-0 bg-[#1e1e1e]"
                     >
-                      <div className="flex items-center gap-4 mb-8">
-                        <div className="w-2 h-2 rounded-full bg-green-500" />
-                        <h2 className="text-3xl font-black text-white tracking-tighter">Your Library</h2>
-                      </div>
+                      <h2 className="text-xl font-bold text-white mb-6">Recent Library</h2>
 
-                      <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-4 pr-4">
+                      <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-3 pr-2">
                         {playlists?.length > 0 ? (
                           playlists.map((pl) => (
                             <button
                               key={pl.id}
                               onClick={() => { spotifyApi.play({ context_uri: pl.uri }); setShowSpotifyBrowser(false); }}
-                              className="flex items-center gap-6 p-5 rounded-[2.5rem] bg-white/5 border border-white/5 hover:bg-white/10 hover:scale-[1.02] active:scale-[0.98] transition-all group relative overflow-hidden"
+                              className="flex items-center gap-4 p-4 min-h-[80px] rounded-xl bg-white/5 border border-transparent hover:bg-white/10 active:scale-[0.98] transition-all text-left"
                             >
-                              <div className="w-20 h-20 rounded-2xl overflow-hidden shadow-2xl border border-white/10 shrink-0">
-                                <img src={pl.images?.[0]?.url} alt="" className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                              <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-black/50">
+                                <img src={pl.images?.[0]?.url} alt="" className="w-full h-full object-cover" />
                               </div>
-                              <div className="text-left flex-1 min-w-0">
-                                <p className="text-xl font-black text-white tracking-tight truncate mb-1">{pl.name}</p>
-                                <p className="text-[10px] font-bold text-white/20 uppercase tracking-[0.2em]">{pl?.tracks?.total || 0} TRACKS</p>
-                              </div>
-                              <div className="w-14 h-14 bg-green-500 rounded-full flex items-center justify-center text-black opacity-0 group-hover:opacity-100 transition-all translate-x-10 group-hover:translate-x-0">
-                                <Play size={28} fill="currentColor" className="ml-1" />
+                              <div className="flex-1 min-w-0">
+                                <p className="text-base font-bold text-white truncate mb-0.5">{pl.name}</p>
+                                <p className="text-xs font-medium text-zinc-400">{pl?.tracks?.total || 0} tracks</p>
                               </div>
                             </button>
                           ))
                         ) : (
-                          <div className="flex-1 flex flex-col items-center justify-center gap-6 opacity-20">
-                            <Music2 size={64} />
-                            <p className="font-black uppercase tracking-widest text-[10px]">Loading playlists...</p>
+                          <div className="flex-1 flex flex-col items-center justify-center gap-4 opacity-40">
+                            <Music2 size={40} />
+                            <p className="text-sm font-bold">Loading playlists...</p>
                           </div>
                         )}
                       </div>
@@ -933,51 +906,14 @@ export default function App() {
                 </AnimatePresence>
               </div>
 
-              {/* Persistent Playback Footer */}
-              {playbackState?.item && (
-                <div className="pt-10 space-y-10">
-                  <div className="space-y-6">
-                    <div
-                      onClick={handleSeek}
-                      className="h-3 bg-white/10 rounded-full overflow-hidden relative cursor-pointer group"
-                    >
-                      <motion.div
-                        className="h-full bg-white shadow-[0_0_25px_rgba(255,255,255,0.4)] group-hover:bg-green-500 transition-colors"
-                        animate={{ width: `${(playbackState.progress_ms / playbackState.item.duration_ms) * 100}%` }}
-                      />
-                      {/* Interaction Thumb */}
-                      <motion.div
-                        className="absolute h-6 w-6 bg-white rounded-full -top-1.5 shadow-xl opacity-0 group-hover:opacity-100 transition-opacity"
-                        animate={{ left: `calc(${(playbackState.progress_ms / playbackState.item.duration_ms) * 100}% - 12px)` }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-[11px] font-black text-white/30 tracking-[0.2em]">
-                      <span>{fmtMs(playbackState.progress_ms)}</span>
-                      <span>{fmtMs(playbackState.item.duration_ms)}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between items-center px-6">
-                    <button onClick={() => spotifyApi.setShuffle(!playbackState.shuffle_state)} className={`transition-all ${playbackState.shuffle_state ? 'text-green-500 scale-125' : 'text-white/20 hover:text-white'}`}><Shuffle size={28} /></button>
-                    <div className="flex items-center gap-12">
-                      <button onClick={() => spotifyApi.skipToPrevious()} className="text-white opacity-40 hover:opacity-100 hover:scale-125 active:scale-75 transition-all"><SkipBack size={48} fill="currentColor" /></button>
-                      <button onClick={() => (playbackState.is_playing ? spotifyApi.pause() : spotifyApi.play())} className="w-28 h-28 bg-white text-black rounded-full flex items-center justify-center hover:scale-110 active:scale-95 transition-all shadow-[0_25px_60px_rgba(255,255,255,0.2)]">
-                        {playbackState.is_playing ? <Pause size={56} fill="currentColor" /> : <Play size={56} fill="currentColor" className="ml-2" />}
-                      </button>
-                      <button onClick={() => spotifyApi.skipToNext()} className="text-white opacity-40 hover:opacity-100 hover:scale-125 active:scale-75 transition-all"><SkipForward size={48} fill="currentColor" /></button>
-                    </div>
-                    <button onClick={() => spotifyApi.setRepeat(playbackState.repeat_state === 'off' ? 'context' : 'off')} className={`transition-all ${playbackState.repeat_state !== 'off' ? 'text-green-500 scale-125' : 'text-white/20 hover:text-white'}`}><Repeat size={28} /></button>
-                  </div>
-                </div>
-              )}
-
             </div>
-          )}
-        </div>
-      </main>
+          )
+          }
+        </div >
+      </main >
 
       {/* App Drawer Overlay */}
-      <AnimatePresence>
+      < AnimatePresence >
         {showAppDrawer && (
           <motion.div
             initial={{ opacity: 0 }}
@@ -999,25 +935,25 @@ export default function App() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-4 md:grid-cols-5 gap-16 overflow-y-auto custom-scrollbar pr-10">
+              <div className="grid grid-cols-4 md:grid-cols-5 gap-12 overflow-y-auto custom-scrollbar pr-10">
                 {[
-                  { name: 'Navigation', icon: <Navigation size={64} />, bg: 'bg-white', text: 'text-black' },
-                  { name: 'Music', icon: <Music2 size={64} />, bg: 'bg-green-500', text: 'text-black' },
-                  { name: 'Messaging', icon: <Mic size={64} />, bg: 'bg-blue-600', text: 'text-white' },
-                  { name: 'Phone', icon: <Phone size={64} />, bg: 'bg-zinc-800', text: 'text-green-500' },
-                  { name: 'Status', icon: <X size={64} />, bg: 'bg-zinc-900', text: 'text-white' },
+                  { name: 'Navigation', icon: <Navigation size={56} />, bg: 'bg-white', text: 'text-black' },
+                  { name: 'Music', icon: <Music2 size={56} />, bg: 'bg-green-500', text: 'text-black' },
+                  { name: 'Messaging', icon: <Mic size={56} />, bg: 'bg-blue-600', text: 'text-white' },
+                  { name: 'Phone', icon: <Phone size={56} />, bg: 'bg-zinc-800', text: 'text-green-500' },
+                  { name: 'Status', icon: <X size={56} />, bg: 'bg-zinc-900', text: 'text-white' },
                 ].map((app, index) => (
                   <motion.button
                     key={index}
-                    whileHover={{ y: -20, scale: 1.05 }}
+                    whileHover={{ y: -10, scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setShowAppDrawer(false)}
-                    className="flex flex-col items-center gap-8 group"
+                    className="flex flex-col items-center gap-6 group"
                   >
-                    <div className={`w-40 h-40 rounded-[3.5rem] ${app.bg} ${app.text} flex items-center justify-center shadow-3xl border border-white/5 transition-all duration-700 group-hover:shadow-white/5`}>
+                    <div className={`w-32 h-32 rounded-2xl ${app.bg} ${app.text} flex items-center justify-center shadow-lg border border-white/5 transition-all duration-500 group-hover:shadow-white/10`}>
                       {app.icon}
                     </div>
-                    <span className="text-sm font-black text-zinc-500 uppercase tracking-[0.4em] group-hover:text-white transition-colors">{app.name}</span>
+                    <span className="text-sm font-bold text-zinc-400 uppercase tracking-widest group-hover:text-white transition-colors">{app.name}</span>
                   </motion.button>
                 ))}
               </div>
