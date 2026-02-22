@@ -245,11 +245,17 @@ export default function App() {
       window.history.replaceState({}, document.title, newUrl);
     }
 
+    // 2c. Real-time Network Listener
+    const networkListener = Network.addListener('networkStatusChange', status => {
+      setNetworkStatus(status);
+    });
+
     return () => {
       clearInterval(timer);
       subscription.unsubscribe();
       window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
       window.removeEventListener('deviceorientation', handleOrientation, true);
+      networkListener.remove();
       watchIdPromise.then(id => {
         if (id) Geolocation.clearWatch({ id });
       });
@@ -909,6 +915,12 @@ export default function App() {
             <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z" /></svg>
           </div>
           <span className="text-[18px] font-bold text-white tracking-wide">{time.getHours() % 12 || 12}:{time.getMinutes().toString().padStart(2, '0')}</span>
+          {!networkStatus.connected && (
+            <div className="flex items-center gap-1 mt-1 px-2 py-0.5 bg-red-500/20 border border-red-500/40 rounded-full">
+              <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div>
+              <span className="text-[10px] font-black text-red-500 uppercase tracking-tighter">Offline</span>
+            </div>
+          )}
         </div>
 
         {/* Middle: Stacked App Icons */}
