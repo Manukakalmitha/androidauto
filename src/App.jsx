@@ -838,6 +838,7 @@ function Dashboard() {
         setNavigationSteps(routeList[0].legs[0].steps);
         directionsRendererRef.current.setDirections(result);
         directionsRendererRef.current.setRouteIndex(0);
+        setShowDirectionsPanel(true);
       }
     });
   };
@@ -855,6 +856,7 @@ function Dashboard() {
   const startNavigation = () => {
     setIsNavigating(true);
     setActiveStepIndex(0);
+    setShowDirectionsPanel(false);
     if (infoWindowRef.current) infoWindowRef.current.close();
 
     // MD3 Automotive Navigation Camera behavior
@@ -1075,13 +1077,70 @@ function Dashboard() {
                       style={{ width: '100%', '--gmpx-color-surface': 'transparent', '--gmpx-border-radius': '0', '--gmpx-font-family': 'Google Sans, Inter, sans-serif' }}
                     ></gmpx-place-picker>
                   </div>
-                  <button onClick={() => setShowDirectionsPanel(true)} className="w-11 h-11 rounded-full bg-[#1a73e8] text-white flex items-center justify-center shadow-lg active:scale-95 transition-all">
-                    <Navigation size={20} fill="white" className="-rotate-45" />
+                  <button onClick={() => setShowDirectionsPanel(!showDirectionsPanel)} className={`w-11 h-11 rounded-full flex items-center justify-center shadow-lg active:scale-95 transition-all ${showDirectionsPanel ? 'bg-red-500 text-white' : 'bg-[#1a73e8] text-white'}`}>
+                    {showDirectionsPanel ? <X size={20} /> : <Navigation size={20} fill="white" className="-rotate-45" />}
                   </button>
                 </div>
               </div>
             </div>
           )}
+
+          {/* Directions Panel Overlay */}
+          <AnimatePresence>
+            {showDirectionsPanel && selectedPlace && !isNavigating && (
+              <motion.div
+                initial={{ opacity: 0, x: -100 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -100 }}
+                className="absolute top-[100px] left-6 bottom-6 w-[400px] z-50 pointer-events-none"
+              >
+                <div className="bg-white/95 backdrop-blur-3xl rounded-[2.5rem] p-8 shadow-2xl pointer-events-auto border border-gray-100 ring-1 ring-black/5 flex flex-col h-full">
+                  <div className="flex items-center gap-4 mb-8">
+                    <div className="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600">
+                      <MapPin size={32} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h2 className="text-2xl font-black text-gray-900 truncate leading-tight">{selectedPlace.displayName || selectedPlace.name}</h2>
+                      <p className="text-sm font-medium text-gray-400 truncate">{selectedPlace.formattedAddress}</p>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar mb-8">
+                    <span className="text-[10px] font-black text-gray-300 uppercase tracking-[0.4em] ml-2">Choose Route</span>
+                    {routes.length > 0 ? routes.map((route, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => selectRoute(idx)}
+                        className={`w-full p-6 rounded-[2rem] border-2 transition-all text-left flex items-center justify-between group ${selectedRouteIndex === idx ? 'border-[#1a73e8] bg-blue-50/50' : 'border-gray-50 hover:border-gray-200'}`}
+                      >
+                        <div className="flex flex-col">
+                          <span className={`text-2xl font-black leading-tight ${selectedRouteIndex === idx ? 'text-[#1a73e8]' : 'text-gray-900'}`}>{route.legs[0].duration.text}</span>
+                          <span className="text-sm font-bold text-gray-400 uppercase tracking-widest">{route.legs[0].distance.text}</span>
+                        </div>
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${selectedRouteIndex === idx ? 'bg-[#1a73e8] text-white scale-110 shadow-lg' : 'bg-gray-100 text-gray-400 group-hover:bg-gray-200'}`}>
+                          {selectedRouteIndex === idx ? <ArrowUp size={20} /> : <div className="w-2 h-2 rounded-full bg-current" />}
+                        </div>
+                      </button>
+                    )) : (
+                      <div className="flex flex-col items-center justify-center py-20 opacity-20">
+                        <History size={48} strokeWidth={1} />
+                        <p className="mt-4 font-bold">Calculating routes...</p>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={startNavigation}
+                    disabled={routes.length === 0}
+                    className="w-full py-6 bg-[#1a73e8] text-white rounded-[2rem] font-black text-2xl shadow-[0_20px_40px_-10px_rgba(26,115,232,0.4)] hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-4 disabled:opacity-50 disabled:scale-100"
+                  >
+                    Start Trip
+                    <Navigation size={28} fill="white" className="-rotate-45" />
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Navigation ETA Overlay (Simplified Pill) */}
           <AnimatePresence>

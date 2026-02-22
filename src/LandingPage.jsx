@@ -34,7 +34,7 @@ const LandingPage = ({ onEnterApp }) => {
                         Launch Web App
                     </button>
                     <a
-                        href="/androidauto-v1.4.apk"
+                        href="/androidauto-v1.5.apk"
                         download
                         className="bg-white text-black px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 hover:bg-zinc-200 transition-all active:scale-95"
                     >
@@ -52,7 +52,7 @@ const LandingPage = ({ onEnterApp }) => {
                     transition={{ duration: 0.8 }}
                 >
                     <span className="inline-block px-4 py-1.5 bg-blue-600/10 text-blue-500 rounded-full text-xs font-bold uppercase tracking-widest mb-6">
-                        Version 1.4 now live
+                        Version 1.5 now live
                     </span>
                     <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 leading-tight">
                         The Evolution of <br />
@@ -71,7 +71,7 @@ const LandingPage = ({ onEnterApp }) => {
                             Experience Web Live
                         </button>
                         <a
-                            href="/androidauto-v1.4.apk"
+                            href="/androidauto-v1.5.apk"
                             download
                             className="w-full sm:w-auto px-8 py-4 glass rounded-2xl font-bold text-lg border border-white/10 hover:bg-white/5 transition-all active:scale-95"
                         >
@@ -134,15 +134,15 @@ const LandingPage = ({ onEnterApp }) => {
                     <div className="absolute top-0 right-0 w-96 h-96 bg-blue-600/20 rounded-full blur-[120px] -translate-y-1/2 translate-x-1/2" />
                     <h2 className="text-4xl md:text-6xl font-black mb-8">Ready to transform Your Drive?</h2>
                     <p className="text-zinc-400 text-lg mb-12 max-w-xl mx-auto">
-                        Get the stable APK build v1.4 and start using the ultimate dashboard on any Android device today.
+                        Get the stable APK build v1.5 and start using the ultimate dashboard on any Android device today.
                     </p>
                     <a
-                        href="/androidauto-v1.4.apk"
+                        href="/androidauto-v1.5.apk"
                         download
                         className="inline-flex items-center gap-3 px-10 py-5 bg-white text-black rounded-[2rem] font-black text-xl hover:scale-105 transition-all shadow-[0_0_30px_rgba(255,255,255,0.2)]"
                     >
                         <Download className="w-6 h-6" />
-                        Download APK v1.4
+                        Download APK v1.5
                     </a>
                 </div>
             </section>
