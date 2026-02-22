@@ -1,8 +1,11 @@
 {
-    "packageName": "com.manuk.androidauto",
+    "packageId": "com.manuk.androidauto",
     "name": "Android Auto Dashboard",
     "shortName": "Dashboard",
+    "host": "androidauto-rust.vercel.app",
     "startUrl": "/",
+    "iconUrl": "https://androidauto-rust.vercel.app/pwa-512x512.png",
+    "maskableIconUrl": "https://androidauto-rust.vercel.app/pwa-512x512.png",
     "display": "standalone",
     "orientation": "landscape",
     "statusBarStyle": "black-translucent",
@@ -14,10 +17,14 @@
     "backgroundColor": "#000000",
     "enableNotifications": true,
     "shortcuts": [],
-    "webManifestUrl": "https://your-domain.com/manifest.webmanifest",
+    "webManifestUrl": "https://androidauto-rust.vercel.app/manifest.webmanifest",
     "appVersionCode": 1,
     "appVersionName": "1.0.0",
     "generatorApp": "bubblewrap-cli",
+    "signingKey": {
+        "path": "c:/Users/manuk/androidauto/android.keystore",
+        "alias": "android"
+    },
     "android": {
         "arch": "v8a"
     }
