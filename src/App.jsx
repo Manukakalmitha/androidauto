@@ -290,13 +290,16 @@ export default function App() {
 
     // Define the ready callback BEFORE loading the script
     window.onSpotifyWebPlaybackSDKReady = () => {
-      console.log("Spotify SDK: Web Playback SDK Ready callback triggered");
-      if (window.Spotify && !spotifyPlayer) {
+      // Small delay to ensure the script's internal modules (like playback-sdk) are fully linked
+      setTimeout(() => {
+        console.log("Spotify SDK: Web Playback SDK Ready callback (hardened)");
+        if (!window.Spotify || !window.Spotify.Player) return;
+
         const player = new window.Spotify.Player({
           name: 'Android Auto Dashboard',
           getOAuthToken: cb => {
             const currentToken = tokenRef.current || spotifyToken;
-            if (typeof currentToken === 'string' && currentToken.length > 0) {
+            if (currentToken) {
               cb(currentToken);
             } else {
               console.warn("Spotify SDK: Invalid or empty token for authorization.");
@@ -328,8 +331,9 @@ export default function App() {
 
         player.connect();
         setSpotifyPlayer(player);
-      }
+      }, 500);
     };
+
 
     // Load script only if not present
     if (!document.getElementById('spotify-player-sdk')) {
@@ -632,7 +636,11 @@ export default function App() {
     <div className="h-screen w-screen bg-black text-white flex overflow-hidden font-sans select-none antialiased">
 
       {/* Component Library Loader (v2 uses solutionChannel for compatibility) */}
-      <APILoader apiKey={GOOGLE_MAPS_API_KEY} solutionChannel="GMP_GE_mapsandplacesautocomplete_v2" />
+      <APILoader
+        apiKey={GOOGLE_MAPS_API_KEY}
+        solutionChannel="GMP_GE_mapsandplacesautocomplete_v2"
+        libraries={['places', 'marker']}
+      />
 
       {/* Left Vertical Navigation Bar */}
       <nav className="w-[100px] bg-black flex flex-col justify-between items-center py-6 z-[100] border-r border-[#1e1e1e]">
@@ -809,7 +817,6 @@ export default function App() {
                               ref={destinationPickerRef}
                               placeholder="Choose destination..."
                               for-map="main-map"
-                              value={selectedPlace}
                               style={{
                                 width: '100%',
                                 '--gmpx-color-surface': 'transparent',
