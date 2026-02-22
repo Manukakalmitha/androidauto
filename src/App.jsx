@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import {
   LayoutGrid,
   Settings as SettingsIcon,
@@ -257,10 +258,17 @@ function Dashboard() {
       setNetworkStatus(status);
     });
 
-    // 5. Notification Listener
-    const notifListener = NotificationPlugin.addListener('onNotificationReceived', (info) => {
-      setNotifications(prev => [info, ...prev].slice(0, 5));
-    });
+    // 5. Notification Listener (Android Only)
+    let notifListener = null;
+    if (Capacitor.isPluginAvailable('NotificationPlugin')) {
+      try {
+        notifListener = NotificationPlugin.addListener('onNotificationReceived', (info) => {
+          setNotifications(prev => [info, ...prev].slice(0, 5));
+        });
+      } catch (e) {
+        console.warn("NotificationPlugin: Failed to add listener", e);
+      }
+    }
 
     return () => {
       clearInterval(timer);
@@ -271,7 +279,7 @@ function Dashboard() {
       watchIdPromise.then(id => {
         if (id) Geolocation.clearWatch({ id });
       });
-      notifListener.remove();
+      if (notifListener) notifListener.remove();
     };
   }, []);
 
@@ -586,16 +594,21 @@ function Dashboard() {
       };
     }
 
-    // Load script only if not present
-    if (!document.getElementById('spotify-player-sdk')) {
-      const script = document.createElement("script");
-      script.id = 'spotify-player-sdk';
-      script.src = "https://sdk.scdn.co/spotify-player.js";
-      script.async = true;
-      document.body.appendChild(script);
-    } else if (window.Spotify && !spotifyPlayer) {
-      // If script is already there but player not initialized, trigger callback manually
-      window.onSpotifyWebPlaybackSDKReady();
+    // Load script immediately if token is available, or setup a watcher
+    const loadSpotifySDK = () => {
+      if (!document.getElementById('spotify-player-sdk')) {
+        const script = document.createElement("script");
+        script.id = 'spotify-player-sdk';
+        script.src = "https://sdk.scdn.co/spotify-player.js";
+        script.async = true;
+        document.body.appendChild(script);
+      } else if (window.Spotify && !spotifyPlayer) {
+        window.onSpotifyWebPlaybackSDKReady();
+      }
+    };
+
+    if (spotifyToken) {
+      loadSpotifySDK();
     }
 
     return () => {
@@ -1157,9 +1170,22 @@ function Dashboard() {
                         </div>
                       </>
                     ) : (
-                      <div className="flex-1 flex flex-col items-center justify-center opacity-20">
-                        <Music2 size={100} strokeWidth={1} />
-                        <p className="mt-6 font-black uppercase tracking-[0.4em] text-xs">Media Hub Ready</p>
+                      <div className="flex-1 flex flex-col items-center justify-center gap-6">
+                        <div className="opacity-20 flex flex-col items-center">
+                          <Music2 size={100} strokeWidth={1} />
+                          <p className="mt-6 font-black uppercase tracking-[0.4em] text-xs text-center">Media Hub Ready</p>
+                        </div>
+                        {!spotifyToken && (
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={loginToSpotify}
+                            className="px-8 py-3 bg-[#1DB954] text-black rounded-full font-bold shadow-lg hover:shadow-[#1DB954]/20 transition-all flex items-center gap-2"
+                          >
+                            <SpotifyLogo size={20} className="text-black" />
+                            Connect Spotify
+                          </motion.button>
+                        )}
                       </div>
                     )}
                   </motion.div>
