@@ -327,23 +327,40 @@ export default function App() {
 
       // Intent parsing
       if (transcript.includes('navigate to') || transcript.includes('go to') || transcript.includes('take me to') || transcript.includes('directions to')) {
-        const dest = transcript.replace(/navigate to|go to|take me to|directions to/g, '').trim();
+        const dest = transcript.replace(/navigate to|go to|take me to|directions to/gi, '').trim();
         speak(`Searching for ${dest}`);
         setVoiceTranscript(`🗺️ Navigating to: "${dest}"`);
-        // Use Google Geocoder to find location and route
-        if (window.google?.maps?.Geocoder) {
-          const geo = new window.google.maps.Geocoder();
-          geo.geocode({ address: dest }, (results, status) => {
-            if (status === 'OK' && results[0]) {
-              const loc = results[0].geometry.location;
-              const place = { location: { lat: loc.lat(), lng: loc.lng() }, displayName: results[0].formatted_address, formattedAddress: results[0].formatted_address };
-              setSelectedPlace(place);
-              fetchRoutes(place, travelMode, originPlace);
-              if (mapRef.current) mapRef.current.center = { lat: loc.lat(), lng: loc.lng() };
-            } else {
-              speak(`Sorry, I couldn't find ${dest}`);
-            }
-          });
+        // Use Places API (async) to find and route
+        try {
+          if (window.google?.maps?.Geocoder) {
+            const geocoder = new window.google.maps.Geocoder();
+            // Use the new promise-based API
+            geocoder.geocode({ address: dest }).then(({ results }) => {
+              if (results && results[0]) {
+                const loc = results[0].geometry.location;
+                const place = {
+                  location: { lat: loc.lat(), lng: loc.lng() },
+                  displayName: results[0].formatted_address,
+                  formattedAddress: results[0].formatted_address
+                };
+                setSelectedPlace(place);
+                fetchRoutes(place, travelMode, originPlace);
+                if (mapRef.current) mapRef.current.center = { lat: loc.lat(), lng: loc.lng() };
+                setShowDirectionsPanel(true);
+                speak(`Route found to ${results[0].formatted_address.split(',')[0]}`);
+              } else {
+                speak(`Sorry, I couldn't find ${dest}. Try a more specific address.`);
+                setVoiceTranscript(`❌ Location not found: "${dest}"`);
+              }
+            }).catch(() => {
+              speak(`Sorry, there was an error finding ${dest}.`);
+              setVoiceTranscript(`❌ Search failed`);
+            });
+          } else {
+            speak('Maps service is still loading. Please try again in a moment.');
+          }
+        } catch (e) {
+          speak('There was an error. Please try again.');
         }
       } else if (transcript.includes('go home') || transcript.includes('navigate home') || transcript.includes('take me home')) {
         if (deviceProfile.home) { routeToSavedLoc(deviceProfile.home); speak('Navigating to your home.'); setVoiceTranscript('🏠 Navigating home'); }
@@ -1140,46 +1157,45 @@ export default function App() {
               </div>
 
               {selectedPlace && !isNavigating && (
-                <div className="flex flex-col border-t border-gray-100">
+                <div className="flex flex-col border-t border-gray-100 rounded-b-2xl overflow-hidden">
                   {/* Summary Block */}
                   {routes[selectedRouteIndex] && (
-                    <div className="px-4 py-4">
-                      <div className="flex items-baseline gap-2 mb-1">
-                        <span className="text-2xl font-black text-[#1a73e8]">{routes[selectedRouteIndex].legs[0].duration.text}</span>
+                    <div className="px-4 pt-4 pb-2">
+                      <div className="flex items-baseline gap-2 mb-0.5">
+                        <span className="text-[28px] font-black text-[#1a73e8] leading-tight">{routes[selectedRouteIndex].legs[0].duration.text}</span>
                         <span className="text-sm font-bold text-gray-500">({routes[selectedRouteIndex].legs[0].distance.text})</span>
                       </div>
-                      <p className="text-xs font-semibold text-gray-400 mb-4">Fastest route, usual traffic</p>
+                      <p className="text-xs text-gray-400 mb-3">Fastest route · {(() => { const now = new Date(); now.setSeconds(now.getSeconds() + routes[selectedRouteIndex].legs[0].duration.value); return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); })()}</p>
 
-                      {/* Action Buttons */}
-                      <div className="flex gap-3">
-                        <button
-                          onClick={startNavigation}
-                          className="flex-1 bg-[#4db6ac] hover:bg-[#80cbc4] text-[#002e2a] h-14 rounded-full flex items-center justify-center gap-2 font-black text-lg shadow-lg active:scale-95 transition-all"
-                        >
-                          <Navigation size={22} fill="currentColor" className="-rotate-45" />
-                          Start
-                        </button>
-                        <button className="w-14 h-14 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all active:scale-95">
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
-                        </button>
-                        <button className="w-14 h-14 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all active:scale-95">
-                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
-                        </button>
-                      </div>
+                      {/* Start Button - Full width teal, prominent */}
+                      <button
+                        onClick={startNavigation}
+                        className="w-full h-13 bg-[#1a73e8] hover:bg-[#1557b0] text-white py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-base shadow active:scale-95 transition-all mb-3"
+                      >
+                        <Navigation size={18} fill="white" className="-rotate-45" />
+                        Start
+                      </button>
                     </div>
                   )}
 
-                  {/* Route List Overlay (Scrollable part if multiple) */}
+                  {/* Route List - Android Auto style horizontal cards */}
                   {routes.length > 1 && (
-                    <div className="flex-1 overflow-x-auto custom-scrollbar flex gap-4 p-6 pt-0 no-scrollbar">
+                    <div className="overflow-x-auto flex gap-2 px-4 pb-4" style={{ scrollbarWidth: 'none' }}>
                       {routes.map((route, idx) => (
                         <button
                           key={idx}
                           onClick={() => selectRoute(idx)}
-                          className={`flex-shrink-0 px-6 py-4 rounded-2xl border transition-all flex flex-col gap-1 min-w-[200px] ${selectedRouteIndex === idx ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/5 bg-white/5'}`}
+                          className={`flex-shrink-0 px-4 py-3 rounded-xl border-2 transition-all flex flex-col gap-0.5 min-w-[160px] text-left ${selectedRouteIndex === idx ? 'border-[#1a73e8] bg-[#e8f0fe]' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'}`}
                         >
-                          <span className="text-xl font-black text-white">{route.legs[0].duration.text}</span>
-                          <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest truncate">via {route.summary}</span>
+                          <span className={`text-lg font-black leading-tight ${selectedRouteIndex === idx ? 'text-[#1a73e8]' : 'text-[#202124]'}`}>
+                            {route.legs[0].duration.text}
+                          </span>
+                          <span className={`text-xs font-semibold truncate ${selectedRouteIndex === idx ? 'text-[#1557b0]' : 'text-gray-500'}`}>
+                            via {route.summary}
+                          </span>
+                          <span className={`text-[11px] mt-0.5 ${selectedRouteIndex === idx ? 'text-[#1a73e8]/70' : 'text-gray-400'}`}>
+                            {route.legs[0].distance.text}
+                          </span>
                         </button>
                       ))}
                     </div>
@@ -1206,120 +1222,206 @@ export default function App() {
 
         </div>
 
-        {/* Media Player Section (Secondary 30% Panel) */}
-        <div className="w-[30%] min-w-[320px] rounded-2xl overflow-hidden bg-[#1e1e1e] relative flex flex-col shadow-md transition-all duration-700">
+        {/* Media Player Section (Secondary 30% Panel) - Full-bleed album art */}
+        <div className="w-[30%] min-w-[320px] rounded-2xl overflow-hidden relative flex flex-col shadow-2xl transition-all duration-700 bg-black">
 
-          {/* Dynamic Full-Bleed Background Overlay */}
-          {playbackState?.item && (
-            <div
-              className="absolute inset-0 opacity-60 transition-all duration-1000 pointer-events-none"
-              style={{
-                background: `radial-gradient(circle at 0% 0%, #${playbackState.item.id ? playbackState.item.id.slice(0, 6) : '1db954'}88 0%, transparent 60%),
-                               radial-gradient(circle at 100% 100%, #${playbackState.item.id ? playbackState.item.id.slice(1, 7) : '1ed760'}44 0%, transparent 60%),
-                               linear-gradient(180deg, rgba(0,0,0,0.8) 0%, #050505 100%)`
-              }}
-            />
+          {/* Full-bleed album art as background */}
+          {playbackState?.item?.album?.images?.[0]?.url && (
+            <>
+              <img
+                key={playbackState.item.album.images[0].url}
+                src={playbackState.item.album.images[0].url}
+                alt=""
+                className="absolute inset-0 w-full h-full object-cover transition-all duration-700"
+                style={{ filter: 'brightness(0.45) saturate(1.2)' }}
+              />
+              {/* Dynamic warm glow overlay extracted from art */}
+              <div
+                className="absolute inset-0 pointer-events-none transition-all duration-1000"
+                style={{
+                  background: `radial-gradient(ellipse 120% 60% at 50% 0%, rgba(80,180,120,0.35) 0%, transparent 70%),
+                                radial-gradient(ellipse 100% 50% at 0% 100%, rgba(40,100,200,0.25) 0%, transparent 70%),
+                                radial-gradient(ellipse 80% 40% at 100% 50%, rgba(220,80,60,0.18) 0%, transparent 70%)`
+                }}
+              />
+            </>
+          )}
+
+          {/* If no art or no token — dark fallback */}
+          {!playbackState?.item && (
+            <div className="absolute inset-0 bg-gradient-to-br from-[#1a1c1e] to-[#0a0a0a]" />
           )}
 
           {!spotifyToken ? (
             <div className="flex-1 flex flex-col items-center justify-center p-8 relative z-10 text-center">
-              <div className="w-24 h-24 bg-green-500 rounded-2xl flex items-center justify-center shadow-lg mb-8">
-                <Music2 size={48} className="text-black" />
-              </div>
-              <h2 className="text-2xl font-bold text-white mb-6">Media Access</h2>
-              <button onClick={loginToSpotify} className="w-full h-16 bg-white text-black font-extrabold rounded-xl text-sm tracking-wide active:scale-95 transition-all">LINK SPOTIFY</button>
+              <img src="/spotify-logo.png" alt="Spotify" className="w-20 h-20 rounded-2xl shadow-lg mb-8 object-contain" />
+              <h2 className="text-2xl font-bold text-white mb-2">Connect Spotify</h2>
+              <p className="text-sm text-white/50 mb-8">Link your account to play music while you drive</p>
+              <button onClick={loginToSpotify} className="w-full h-14 bg-[#1DB954] text-black font-extrabold rounded-full text-sm tracking-wide active:scale-95 transition-all flex items-center justify-center gap-3">
+                <img src="/spotify-logo.png" alt="" className="w-6 h-6 object-contain" />
+                LINK SPOTIFY
+              </button>
             </div>
           ) : (
-            <div className="flex-1 flex flex-col p-12 relative z-10">
+            <div className="flex-1 flex flex-col relative z-10 min-h-0">
 
-              <div className="flex justify-between items-center mb-6 px-6 pt-6">
-                <div className="flex items-center gap-3">
-                  <SpotifyLogo size={24} />
-                  <span className="text-sm font-bold text-white opacity-90">Spotify</span>
+              {/* Top Bar */}
+              <div className="flex justify-between items-center px-5 pt-5 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <img src="/spotify-logo.png" alt="Spotify" className="w-7 h-7 object-contain rounded-md" />
+                  <span className="text-sm font-bold text-white/90 tracking-wide">Spotify</span>
                 </div>
                 <div className="flex gap-2">
                   <button
                     onClick={() => setShowSpotifyBrowser(!showSpotifyBrowser)}
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${showSpotifyBrowser ? 'bg-green-500 text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${showSpotifyBrowser ? 'bg-[#1DB954] text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
                   >
-                    <LayoutGrid size={20} />
+                    <LayoutGrid size={17} />
                   </button>
                 </div>
               </div>
 
               {/* Main Media Content */}
-              <div className="flex-1 flex flex-col min-h-0 bg-[#1e1e1e]">
+              <div className="flex-1 flex flex-col min-h-0">
                 <AnimatePresence mode="wait">
                   {!showSpotifyBrowser ? (
                     <motion.div
                       key="player"
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.98 }}
-                      className="flex-1 flex flex-col p-6"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="flex-1 flex flex-col px-5 pb-5 gap-4 min-h-0"
                     >
                       {playbackState?.item ? (
-                        <div className="flex-1 flex flex-col min-h-0">
+                        <div className="flex-1 flex flex-col min-h-0 gap-3">
 
-                          {/* Giant Artwork Anchor */}
-                          <div className="flex-1 min-h-0 min-w-0 w-full rounded-2xl overflow-hidden shadow-lg relative group mb-6">
-                            <img src={playbackState.item.album.images[0].url} alt="Cover" className="w-full h-full object-cover" />
-                            <div className="absolute inset-0 bg-gradient-to-t from-[#1e1e1e] to-transparent opacity-80 pointer-events-none" />
+                          {/* Small floating album art thumbnail (not full bleed duplicate) */}
+                          <div className="flex-1 min-h-0 flex items-center justify-center">
+                            <div className="w-48 h-48 rounded-2xl overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.8)] ring-1 ring-white/10">
+                              <img src={playbackState.item.album.images[0].url} alt="Cover" className="w-full h-full object-cover" />
+                            </div>
                           </div>
 
-                          {/* Track Info (High Contrast) */}
-                          <div className="flex justify-between items-end gap-4 mb-8">
+                          {/* Track Info */}
+                          <div className="flex justify-between items-start gap-3">
                             <div className="flex-1 min-w-0">
-                              <h1 className="text-2xl font-bold text-white tracking-tight truncate">
+                              <h1 className="text-xl font-bold text-white tracking-tight truncate leading-tight">
                                 {playbackState.item.name}
                               </h1>
-                              <p className="text-base font-medium text-zinc-400 truncate mt-1">{playbackState.item.artists[0].name}</p>
+                              <p className="text-sm font-medium text-white/60 truncate mt-0.5">
+                                {playbackState.item.artists.map(a => a.name).join(', ')}
+                              </p>
+                              <p className="text-xs text-white/40 truncate mt-0.5">
+                                {playbackState.item.album.name}
+                              </p>
                             </div>
                             <button
                               onClick={toggleLike}
-                              className={`p-3 rounded-full transition-all active:scale-90 ${isLiked ? 'text-green-500 bg-green-500/10' : 'text-zinc-400 bg-white/5 hover:text-white'}`}
+                              className={`p-2.5 rounded-full transition-all active:scale-90 shrink-0 ${isLiked ? 'text-[#1DB954]' : 'text-white/50 hover:text-white'}`}
                             >
-                              <Heart size={24} fill={isLiked ? "currentColor" : "none"} strokeWidth={2} />
+                              <Heart size={22} fill={isLiked ? "currentColor" : "none"} strokeWidth={1.5} />
                             </button>
                           </div>
 
-                          {/* Thick Progress Bar */}
-                          <div className="space-y-3 mb-8">
+                          {/* Progress Bar */}
+                          <div className="space-y-1.5">
                             <div
                               onClick={handleSeek}
-                              className="h-6 bg-black/40 rounded-full overflow-hidden relative cursor-pointer group"
+                              className="h-1.5 bg-white/20 rounded-full overflow-hidden relative cursor-pointer group"
                             >
-                              <motion.div
-                                className="h-full bg-white transition-colors"
-                                animate={{ width: `${(playbackState.progress_ms / playbackState.item.duration_ms) * 100}%` }}
+                              <div
+                                className="h-full bg-white rounded-full transition-all duration-1000"
+                                style={{ width: `${(playbackState.progress_ms / playbackState.item.duration_ms) * 100}%` }}
                               />
                             </div>
-                            <div className="flex justify-between text-xs font-bold text-zinc-500">
+                            <div className="flex justify-between text-[11px] font-bold text-white/40">
                               <span>{fmtMs(playbackState.progress_ms)}</span>
                               <span>{fmtMs(playbackState.item.duration_ms)}</span>
                             </div>
                           </div>
 
-                          {/* Jumbo Controls */}
-                          <div className="flex justify-between items-center px-4">
-                            <button onClick={() => spotifyApi.skipToPrevious()} className="p-4 text-white opacity-80 hover:opacity-100 active:scale-95 transition-all bg-white/5 rounded-full"><SkipBack size={32} fill="currentColor" /></button>
-                            <button onClick={() => (playbackState.is_playing ? spotifyApi.pause() : spotifyApi.play())} className="w-24 h-24 bg-green-500 text-black rounded-full flex items-center justify-center active:scale-95 transition-all shadow-lg">
-                              {playbackState.is_playing ? <Pause size={40} fill="currentColor" /> : <Play size={40} fill="currentColor" className="ml-1" />}
+                          {/* Secondary Controls: Shuffle + Repeat */}
+                          <div className="flex justify-between items-center px-1">
+                            <button
+                              onClick={() => spotifyApi.setShuffle(!playbackState.shuffle_state)}
+                              className={`p-2 rounded-full transition-all active:scale-90 ${playbackState.shuffle_state ? 'text-[#1DB954]' : 'text-white/40 hover:text-white'}`}
+                              title="Shuffle"
+                            >
+                              <Shuffle size={18} />
                             </button>
-                            <button onClick={() => spotifyApi.skipToNext()} className="p-4 text-white opacity-80 hover:opacity-100 active:scale-95 transition-all bg-white/5 rounded-full"><SkipForward size={32} fill="currentColor" /></button>
+
+                            {/* Main Controls */}
+                            <div className="flex items-center gap-4">
+                              <button onClick={() => spotifyApi.skipToPrevious()} className="text-white/80 hover:text-white active:scale-95 transition-all">
+                                <SkipBack size={26} fill="currentColor" />
+                              </button>
+                              <button
+                                onClick={() => (playbackState.is_playing ? spotifyApi.pause() : spotifyApi.play())}
+                                className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center active:scale-95 transition-all shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
+                              >
+                                {playbackState.is_playing
+                                  ? <Pause size={28} fill="currentColor" />
+                                  : <Play size={28} fill="currentColor" className="ml-1" />
+                                }
+                              </button>
+                              <button onClick={() => spotifyApi.skipToNext()} className="text-white/80 hover:text-white active:scale-95 transition-all">
+                                <SkipForward size={26} fill="currentColor" />
+                              </button>
+                            </div>
+
+                            <button
+                              onClick={() => {
+                                const modes = [0, 1, 2];
+                                const current = playbackState.repeat_state === 'off' ? 0 : playbackState.repeat_state === 'context' ? 1 : 2;
+                                const next = modes[(current + 1) % 3];
+                                spotifyApi.setRepeat(['off', 'context', 'track'][next]);
+                              }}
+                              className={`p-2 rounded-full transition-all active:scale-90 relative ${playbackState.repeat_state !== 'off' ? 'text-[#1DB954]' : 'text-white/40 hover:text-white'}`}
+                              title="Repeat"
+                            >
+                              <Repeat size={18} />
+                              {playbackState.repeat_state === 'track' && (
+                                <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-[#1DB954] text-black rounded-full text-[8px] font-black flex items-center justify-center leading-none">1</span>
+                              )}
+                            </button>
                           </div>
+
+                          {/* Volume Slider */}
+                          <div className="flex items-center gap-3 px-1">
+                            <Volume2 size={15} className="text-white/40 shrink-0" />
+                            <input
+                              type="range"
+                              min="0"
+                              max="100"
+                              value={playbackState.device?.volume_percent ?? 50}
+                              onChange={(e) => spotifyApi.setVolume(parseInt(e.target.value))}
+                              className="flex-1 h-1 accent-white cursor-pointer"
+                              style={{ accentColor: '#1DB954' }}
+                            />
+                          </div>
+
+                          {/* Up Next */}
+                          {upNext?.item && (
+                            <div className="flex items-center gap-3 bg-black/30 rounded-xl px-3 py-2.5 backdrop-blur-sm">
+                              <div className="w-8 h-8 rounded-md overflow-hidden shrink-0">
+                                <img src={upNext.item.album?.images?.[0]?.url} alt="" className="w-full h-full object-cover" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Up Next</p>
+                                <p className="text-xs text-white/80 font-semibold truncate">{upNext.item.name}</p>
+                              </div>
+                            </div>
+                          )}
 
                         </div>
                       ) : (
                         <div className="flex-1 flex flex-col items-center justify-center gap-6">
-                          <div className="w-20 h-20 bg-white/5 rounded-2xl flex items-center justify-center text-zinc-600">
-                            <Music2 size={32} />
-                          </div>
-                          <p className="text-sm font-bold text-zinc-500 uppercase tracking-widest">{isPlayerReady ? 'Dashboard Ready' : 'Connecting...'}</p>
+                          <img src="/spotify-logo.png" alt="Spotify" className="w-16 h-16 object-contain rounded-xl opacity-60" />
+                          <p className="text-sm font-bold text-white/40 uppercase tracking-widest">{isPlayerReady ? 'Dashboard Ready' : 'Connecting...'}</p>
                           {isPlayerReady && !playbackState?.item && (
                             <button
                               onClick={transferPlayback}
-                              className="px-8 py-4 bg-green-500 text-black font-extrabold rounded-xl text-sm transition-all"
+                              className="px-8 py-4 bg-[#1DB954] text-black font-extrabold rounded-full text-sm transition-all active:scale-95"
                             >
                               START PLAYER
                             </button>
@@ -1333,31 +1435,30 @@ export default function App() {
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -20 }}
-                      className="flex-1 flex flex-col pt-2 pb-6 px-6 overflow-hidden min-h-0 bg-[#1e1e1e]"
+                      className="flex-1 flex flex-col pt-2 pb-5 px-5 overflow-hidden min-h-0"
                     >
-                      <h2 className="text-xl font-bold text-white mb-6">Recent Library</h2>
-
-                      <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-3 pr-2">
+                      <h2 className="text-lg font-bold text-white mb-4">Your Library</h2>
+                      <div className="flex-1 overflow-y-auto flex flex-col gap-2.5 pr-1" style={{ scrollbarWidth: 'none' }}>
                         {playlists?.length > 0 ? (
                           playlists.map((pl) => (
                             <button
                               key={pl.id}
                               onClick={() => { spotifyApi.play({ context_uri: pl.uri }); setShowSpotifyBrowser(false); }}
-                              className="flex items-center gap-4 p-4 min-h-[80px] rounded-xl bg-white/5 border border-transparent hover:bg-white/10 active:scale-[0.98] transition-all text-left"
+                              className="flex items-center gap-3 p-3 rounded-xl bg-white/10 hover:bg-white/20 active:scale-[0.98] transition-all text-left"
                             >
-                              <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-black/50">
+                              <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-black/50">
                                 <img src={pl.images?.[0]?.url} alt="" className="w-full h-full object-cover" />
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="text-base font-bold text-white truncate mb-0.5">{pl.name}</p>
-                                <p className="text-xs font-medium text-zinc-400">{pl?.tracks?.total || 0} tracks</p>
+                                <p className="text-sm font-bold text-white truncate">{pl.name}</p>
+                                <p className="text-xs font-medium text-white/50">{pl?.tracks?.total || 0} tracks</p>
                               </div>
                             </button>
                           ))
                         ) : (
                           <div className="flex-1 flex flex-col items-center justify-center gap-4 opacity-40">
-                            <Music2 size={40} />
-                            <p className="text-sm font-bold">Loading playlists...</p>
+                            <Music2 size={40} className="text-white" />
+                            <p className="text-sm font-bold text-white">Loading playlists...</p>
                           </div>
                         )}
                       </div>
