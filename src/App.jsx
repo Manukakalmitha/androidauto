@@ -30,7 +30,8 @@ import {
   User,
   Settings,
   Home,
-  Briefcase
+  Briefcase,
+  CornerDownRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SpotifyWebApi from 'spotify-web-api-js';
@@ -116,6 +117,7 @@ export default function App() {
   const [upNext, setUpNext] = useState(null);
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
+  const [currentSpeed, setCurrentSpeed] = useState(0);
 
   const [deviceProfile, setDeviceProfile] = useState(() => {
     const saved = localStorage.getItem('android-auto-profile');
@@ -152,13 +154,26 @@ export default function App() {
         setBatteryInfo(bInfo);
         const nStatus = await Network.getStatus();
         setNetworkStatus(nStatus);
-        const pos = await Geolocation.getCurrentPosition();
-        setCurrentCoords(pos.coords);
+
+        // Use watchPosition for real-time speed and coordinates
+        const watchId = await Geolocation.watchPosition({
+          enableHighAccuracy: true,
+          timeout: 10000
+        }, (pos) => {
+          if (pos) {
+            setCurrentCoords(pos.coords);
+            // speed is in m/s, convert to km/h
+            const speedKmH = pos.coords.speed ? Math.round(pos.coords.speed * 3.6) : 0;
+            setCurrentSpeed(speedKmH);
+          }
+        });
+
+        return watchId;
       } catch (e) {
         console.error("Hardware monitor error:", e);
       }
     };
-    monitorHardware();
+    let watchIdPromise = monitorHardware();
 
     // 3. Supabase Auth Listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -196,6 +211,9 @@ export default function App() {
     return () => {
       clearInterval(timer);
       subscription.unsubscribe();
+      watchIdPromise.then(id => {
+        if (id) Geolocation.clearWatch({ id });
+      });
     };
   }, []);
 
@@ -703,7 +721,6 @@ export default function App() {
                 {/* Primary Maneuver */}
                 <div className="p-6 flex items-start gap-6">
                   <div className="w-20 h-20 bg-white/10 rounded-3xl flex items-center justify-center text-white shrink-0">
-                    {/* Dynamic Icon based on step could go here, using Navigation currently */}
                     <Navigation size={48} fill="currentColor" className="rotate-[-45deg]" />
                   </div>
                   <div className="flex-1 flex flex-col justify-center min-w-0 h-20">
@@ -714,17 +731,32 @@ export default function App() {
 
                 {/* Secondary/Then Maneuver */}
                 {navigationSteps[activeStepIndex + 1] && (
-                  <div className="bg-black/10 px-8 py-3 flex items-center gap-4">
-                    <span className="text-sm font-black text-white/40 uppercase tracking-widest">Then</span>
-                    <span className="text-lg font-bold text-white/90 truncate" dangerouslySetInnerHTML={{ __html: navigationSteps[activeStepIndex + 1]?.instructions }} />
+                  <div className="bg-black/20 px-8 py-4 flex items-center gap-5 border-t border-white/5">
+                    <div className="flex flex-col flex-1">
+                      <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-1">Then</span>
+                      <div className="flex items-center gap-3">
+                        <CornerDownRight size={22} className="text-white/60" />
+                        <span className="text-xl font-bold text-white/90 truncate" dangerouslySetInnerHTML={{ __html: navigationSteps[activeStepIndex + 1]?.instructions }} />
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {/* Simulation Controls (Floating over card) */}
+                {/* Simulation Controls */}
                 <div className="p-4 flex gap-2">
                   <button onClick={() => setActiveStepIndex(p => Math.min(p + 1, navigationSteps.length - 1))} className="flex-1 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold text-sm transition-all active:scale-95 italic">Simulate Next Turn</button>
                   <button onClick={endNavigation} className="w-14 h-12 bg-red-500/80 hover:bg-red-500 rounded-xl flex items-center justify-center text-white transition-all active:scale-95 shadow-lg"><X size={24} strokeWidth={3} /></button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Speedometer (Bottom Left) */}
+          {isNavigating && (
+            <div className="absolute bottom-10 left-10 z-[60] pointer-events-none animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <div className="bg-white/95 backdrop-blur-xl w-24 h-24 rounded-full shadow-2xl flex flex-col items-center justify-center border-4 border-zinc-200/50">
+                <span className="text-4xl font-black text-black leading-none">{currentSpeed}</span>
+                <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mt-1">km/h</span>
               </div>
             </div>
           )}
@@ -734,18 +766,7 @@ export default function App() {
             <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="bg-[#1a1c1e]/95 backdrop-blur-3xl rounded-full px-8 py-4 border border-white/10 shadow-2xl flex items-center gap-6 overflow-hidden min-w-[320px] justify-center">
                 <div className="flex flex-col items-center">
-                  <span className="text-[22px] font-black text-green-500 leading-none">{routes[selectedRouteIndex].legs[0].duration.text}</span>
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-1">Travel Time</span>
-                </div>
-                <div className="w-[1px] h-8 bg-white/10 self-center"></div>
-                <div className="flex flex-col items-center">
-                  <span className="text-[22px] font-black text-white leading-none">{routes[selectedRouteIndex].legs[0].distance.text}</span>
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-1">Remaining</span>
-                </div>
-                <div className="w-[1px] h-8 bg-white/10 self-center"></div>
-                <div className="flex flex-col items-center">
-                  <span className="text-[22px] font-black text-white leading-none">
-                    {/* Calculate ETA based on duration */}
+                  <span className="text-[24px] font-black text-green-500 leading-none">
                     {(() => {
                       const now = new Date();
                       const durationSec = routes[selectedRouteIndex].legs[0].duration.value;
@@ -753,7 +774,19 @@ export default function App() {
                       return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     })()}
                   </span>
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-1">Arrival</span>
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-1.5 leading-none flex items-center gap-1">
+                    Arrival <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
+                  </span>
+                </div>
+                <div className="w-[1px] h-10 bg-white/10 self-center mx-2"></div>
+                <div className="flex flex-col items-center">
+                  <span className="text-[24px] font-black text-white leading-none">{routes[selectedRouteIndex].legs[0].duration.text}</span>
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-1.5 leading-none">Travel Time</span>
+                </div>
+                <div className="w-[1px] h-10 bg-white/10 self-center mx-2"></div>
+                <div className="flex flex-col items-center">
+                  <span className="text-[24px] font-black text-white leading-none">{routes[selectedRouteIndex].legs[0].distance.text}</span>
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-1.5 leading-none">Remaining</span>
                 </div>
               </div>
             </div>
@@ -906,44 +939,53 @@ export default function App() {
                 )}
               </div>
 
-              {!isNavigating && selectedPlace && (
-                <div className="flex flex-col">
-                  <div className="flex gap-2 px-6 pb-6 mt-2">
-                    {[
-                      { id: 'DRIVING', icon: <Car size={20} /> },
-                      { id: 'BICYCLING', icon: <Bike size={20} /> },
-                      { id: 'TRANSIT', icon: <BusFront size={20} /> },
-                      { id: 'WALKING', icon: <Footprints size={20} /> }
-                    ].map((mode) => (
-                      <button
-                        key={mode.id}
-                        onClick={() => { setTravelMode(mode.id); fetchRoutes(selectedPlace, mode.id); }}
-                        className={`flex-1 py-4 rounded-2xl flex items-center justify-center transition-all ${travelMode === mode.id ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'bg-white/5 text-zinc-500 hover:bg-white/10'}`}
-                      >
-                        {mode.icon}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {selectedPlace && !isNavigating && (
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-8 max-h-[450px]">
-                  <div className="flex flex-col gap-4">
-                    {routes.map((route, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => selectRoute(idx)}
-                        className={`p-6 rounded-3xl border text-left transition-all ${selectedRouteIndex === idx ? 'border-blue-500 bg-blue-500/10' : 'border-white/5 bg-white/5 hover:bg-white/10'}`}
-                      >
-                        <div className="flex justify-between items-center mb-2">
-                          <span className="text-2xl font-black text-white">{route.legs[0].duration.text}</span>
-                          <span className="text-[11px] font-black text-green-500 uppercase tracking-widest">{route.legs[0].distance.text}</span>
-                        </div>
-                        <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-[0.2em]">via {route.summary}</p>
-                      </button>
-                    ))}
-                  </div>
+                <div className="flex flex-col border-t border-white/5 bg-[#1a1c1e]/50">
+                  {/* Summary Block */}
+                  {routes[selectedRouteIndex] && (
+                    <div className="p-6">
+                      <div className="flex items-baseline gap-2 mb-1">
+                        <span className="text-3xl font-black text-[#81c995]">{routes[selectedRouteIndex].legs[0].duration.text}</span>
+                        <span className="text-lg font-bold text-zinc-400">({routes[selectedRouteIndex].legs[0].distance.text})</span>
+                      </div>
+                      <p className="text-sm font-bold text-zinc-300 mb-6 flex items-center gap-1.5 gray-400">
+                        Fastest route, the usual traffic
+                      </p>
+
+                      {/* Action Buttons */}
+                      <div className="flex gap-3">
+                        <button
+                          onClick={startNavigation}
+                          className="flex-1 bg-[#4db6ac] hover:bg-[#80cbc4] text-[#002e2a] h-14 rounded-full flex items-center justify-center gap-2 font-black text-lg shadow-lg active:scale-95 transition-all"
+                        >
+                          <Navigation size={22} fill="currentColor" className="-rotate-45" />
+                          Start
+                        </button>
+                        <button className="w-14 h-14 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all active:scale-95">
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+                        </button>
+                        <button className="w-14 h-14 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white transition-all active:scale-95">
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" y1="13.51" x2="15.42" y2="17.49" /><line x1="15.41" y1="6.51" x2="8.59" y2="10.49" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Route List Overlay (Scrollable part if multiple) */}
+                  {routes.length > 1 && (
+                    <div className="flex-1 overflow-x-auto custom-scrollbar flex gap-4 p-6 pt-0 no-scrollbar">
+                      {routes.map((route, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => selectRoute(idx)}
+                          className={`flex-shrink-0 px-6 py-4 rounded-2xl border transition-all flex flex-col gap-1 min-w-[200px] ${selectedRouteIndex === idx ? 'border-[#4db6ac] bg-[#4db6ac]/10' : 'border-white/5 bg-white/5'}`}
+                        >
+                          <span className="text-xl font-black text-white">{route.legs[0].duration.text}</span>
+                          <span className="text-xs font-bold text-zinc-500 uppercase tracking-widest truncate">via {route.summary}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
