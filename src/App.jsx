@@ -41,9 +41,12 @@ import SpotifyWebApi from 'spotify-web-api-js';
 import { createClient } from '@supabase/supabase-js';
 
 // Capacitor Plugins
+import { registerPlugin } from '@capacitor/core';
 import { Device } from '@capacitor/device';
 import { Network } from '@capacitor/network';
 import { Geolocation } from '@capacitor/geolocation';
+
+const NotificationPlugin = registerPlugin('NotificationPlugin');
 
 // Google Maps Extended Components (React Wrappers)
 import { APILoader } from '@googlemaps/extended-component-library/react';
@@ -121,6 +124,7 @@ export default function App() {
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [showSettings, setShowSettings] = useState(false);
   const [currentSpeed, setCurrentSpeed] = useState(0);
+  const [notifications, setNotifications] = useState([]);
 
   // --- Voice Assistant State ---
   const [isListening, setIsListening] = useState(false);
@@ -250,6 +254,11 @@ export default function App() {
       setNetworkStatus(status);
     });
 
+    // 5. Notification Listener
+    const notifListener = NotificationPlugin.addListener('onNotificationReceived', (info) => {
+      setNotifications(prev => [info, ...prev].slice(0, 5));
+    });
+
     return () => {
       clearInterval(timer);
       subscription.unsubscribe();
@@ -259,6 +268,7 @@ export default function App() {
       watchIdPromise.then(id => {
         if (id) Geolocation.clearWatch({ id });
       });
+      notifListener.remove();
     };
   }, []);
 
@@ -896,73 +906,78 @@ export default function App() {
   const formattedTime = time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   return (
-    <div className="h-screen w-screen bg-black text-white flex overflow-hidden font-sans select-none antialiased">
+    <div className="h-screen w-screen bg-[#000] text-zinc-100 flex overflow-hidden font-sans select-none antialiased">
 
-      {/* Component Library Loader (v2 uses solutionChannel for compatibility) */}
+      {/* Modern Left Rail - Tablet Optimized */}
+      <nav className="w-20 bg-[#000] border-r border-white/5 flex flex-col items-center py-6 gap-6 relative z-[100]">
+
+        {/* Top: Branding/Logo */}
+        <button
+          onClick={() => setShowAppDrawer(true)}
+          className="w-12 h-12 rounded-2xl bg-white/5 hover:bg-white/10 flex items-center justify-center transition-all active:scale-95 group shadow-xl"
+        >
+          <LayoutGrid size={24} className="text-zinc-500 group-hover:text-white transition-colors" />
+        </button>
+
+        {/* Middle: Core Apps */}
+        <div className="flex-1 flex flex-col gap-4 mt-4">
+          <button
+            onClick={() => { setActiveTab('maps'); setShowAppDrawer(false); }}
+            className={`aa-rail-btn ${activeTab === 'maps' ? 'bg-[#1a73e8] text-white shadow-lg shadow-blue-500/20' : 'hover:bg-white/5 text-zinc-500'}`}
+          >
+            <Navigation size={28} fill={activeTab === 'maps' ? "white" : "none"} strokeWidth={2.5} />
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('spotify'); setShowAppDrawer(false); }}
+            className={`aa-rail-btn ${activeTab === 'spotify' ? 'bg-[#1DB954] text-black shadow-lg shadow-green-500/20' : 'hover:bg-white/5 text-zinc-500'}`}
+          >
+            <Music2 size={28} fill={activeTab === 'spotify' ? "black" : "none"} strokeWidth={2.5} />
+          </button>
+
+          <button
+            className="aa-rail-btn hover:bg-white/5 text-zinc-500"
+          >
+            <Phone size={28} />
+          </button>
+        </div>
+
+        {/* Bottom: Tools & Clock */}
+        <div className="flex flex-col items-center gap-6">
+          <button
+            onClick={toggleVoiceAssistant}
+            className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all duration-500 ${isListening ? 'bg-red-500 text-white shadow-lg shadow-red-500/50 scale-110' : 'hover:bg-white/5 text-zinc-500'}`}
+          >
+            <Mic size={28} />
+          </button>
+
+          <button
+            onClick={() => setShowSettings(true)}
+            className="w-12 h-12 rounded-full flex items-center justify-center hover:bg-white/5 text-zinc-500 transition-all active:scale-90"
+          >
+            <SettingsIcon size={24} />
+          </button>
+
+          <div className="flex flex-col items-center opacity-40">
+            <span className="text-[13px] font-black tracking-tighter text-white">
+              {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
+            </span>
+          </div>
+        </div>
+      </nav>
+
+      {/* Component Library Loader */}
       <APILoader
         apiKey={GOOGLE_MAPS_API_KEY}
         solutionChannel="GMP_GCC_placeautocomplete_v1"
         libraries={['places', 'marker']}
       />
 
-      {/* Left Vertical Navigation Bar */}
-      <nav className="w-[100px] bg-black flex flex-col justify-between items-center py-6 z-[100] border-r border-[#1e1e1e]">
+      <main className="flex-1 flex gap-4 p-4 min-w-0 bg-[#000]">
 
-        {/* Top: Status & Clock */}
-        <div className="flex flex-col items-center gap-1 mb-4">
-          <div className="flex items-center gap-1 opacity-90 text-white">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M21 3L3 21h18V3z" /></svg>
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z" /></svg>
-          </div>
-          <span className="text-[18px] font-bold text-white tracking-wide">{time.getHours() % 12 || 12}:{time.getMinutes().toString().padStart(2, '0')}</span>
-          {!networkStatus.connected && (
-            <div className="flex items-center gap-1 mt-1 px-2 py-0.5 bg-red-500/20 border border-red-500/40 rounded-full">
-              <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></div>
-              <span className="text-[10px] font-black text-red-500 uppercase tracking-tighter">Offline</span>
-            </div>
-          )}
-        </div>
+        {/* Primary Slot - Dynamic Content (Maps mostly) */}
+        <div className="flex-1 aa-card relative">
 
-        {/* Middle: Stacked App Icons */}
-        <div className="flex flex-col items-center gap-6 my-auto">
-          {[
-            { id: 'maps', icon: <GoogleMapsLogo size={42} className="drop-shadow-md" /> },
-            { id: 'spotify', icon: <SpotifyLogo size={46} /> },
-            { id: 'phone', icon: <div className="bg-white rounded-full w-[46px] h-[46px] shadow-md flex items-center justify-center"><Phone size={24} className="text-blue-500 fill-current" /></div> },
-          ].map((app) => (
-            <button
-              key={app.id}
-              onClick={() => { setActiveTab(app.id); setShowAppDrawer(false); }}
-              className={`transition-transform duration-300 relative rounded-full flex items-center justify-center active:scale-95 ${activeTab === app.id ? 'scale-110 drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'opacity-80 hover:opacity-100'}`}
-            >
-              {app.icon}
-            </button>
-          ))}
-        </div>
-
-        {/* Bottom: Mic and App Grid */}
-        <div className="flex flex-col gap-6 items-center mt-4 pt-4 border-t border-[#1e1e1e] w-[60%]">
-          <button
-            onClick={toggleVoiceAssistant}
-            className={`w-14 h-14 flex items-center justify-center rounded-full transition-all active:scale-95 relative
-              ${isListening ? 'bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)]' : 'text-white hover:bg-white/10'}`}
-          >
-            <Mic size={28} />
-            {isListening && (
-              <span className="absolute inset-0 rounded-full border-2 border-red-400 animate-ping opacity-75"></span>
-            )}
-          </button>
-          <button onClick={() => setShowAppDrawer(!showAppDrawer)} className="w-14 h-14 flex items-center justify-center rounded-3xl text-white hover:bg-white/10 transition-colors active:scale-95">
-            <LayoutGrid size={28} />
-          </button>
-        </div>
-      </nav>
-
-      {/* Main Split Content Area */}
-      <main className="flex-1 flex overflow-hidden p-3 gap-3 bg-[#0a0a0a]">
-
-        {/* Map Section (Dominant 70% Width) */}
-        <div className="w-[70%] relative rounded-2xl overflow-hidden shadow-md bg-[#121212]">
           <gmp-map
             ref={mapRef}
             id="main-map"
@@ -972,592 +987,280 @@ export default function App() {
             <gmp-advanced-marker ref={markerRef}></gmp-advanced-marker>
           </gmp-map>
 
-          {/* Active Navigation: Maneuver Bar (Official Horizontal Style) */}
-          {isNavigating && navigationSteps.length > 0 && (
-            <div className="absolute top-0 left-0 right-0 z-[100] px-6 py-6 flex justify-center pointer-events-none animate-in slide-in-from-top duration-700">
-              <div className="flex flex-col items-start gap-2 max-w-[800px] w-full pointer-events-auto">
-                {/* Primary Maneuver Bar */}
-                <div className="bg-[#00703b] rounded-[28px] shadow-2xl flex items-center px-8 py-5 gap-8 w-full border border-white/5">
-                  <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center text-white shrink-0">
-                    <ArrowUp size={44} strokeWidth={3} />
+          {/* Active Navigation Maneuver Bar */}
+          <AnimatePresence>
+            {isNavigating && navigationSteps.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: -20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="absolute top-6 left-6 right-6 z-50 pointer-events-none"
+              >
+                <div className="bg-[#00703b] rounded-[2rem] shadow-2xl flex items-center px-6 py-4 gap-6 w-full border border-white/5 pointer-events-auto">
+                  <div className="w-14 h-14 bg-white/10 rounded-2xl flex items-center justify-center text-white shrink-0">
+                    <ArrowUp size={36} strokeWidth={3} />
                   </div>
-                  <div className="flex flex-col justify-center min-w-0">
-                    <div className="flex items-center gap-3">
-                      <span className="text-[32px] font-black text-white leading-tight">towards</span>
-                      <span className="text-[32px] font-bold text-white leading-tight truncate" dangerouslySetInnerHTML={{ __html: navigationSteps[activeStepIndex]?.instructions }} />
-                    </div>
-                    <span className="text-[24px] font-medium text-white/70 mt-0.5">{navigationSteps[activeStepIndex]?.distance.text}</span>
+                  <div className="flex flex-col min-w-0">
+                    <span className="text-2xl font-black text-white leading-tight truncate">
+                      Towards <span dangerouslySetInnerHTML={{ __html: navigationSteps[activeStepIndex]?.instructions }} />
+                    </span>
+                    <span className="text-lg font-bold text-white/70">{navigationSteps[activeStepIndex]?.distance.text}</span>
                   </div>
+                  <button onClick={endNavigation} className="ml-auto w-12 h-12 rounded-full bg-white/10 flex items-center justify-center text-white pointer-events-auto hover:bg-white/20"><X size={24} /></button>
                 </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-                {/* "Then" Mini Card (Badge Style) */}
-                {navigationSteps[activeStepIndex + 1] && (
-                  <div className="bg-[#004d2c]/90 backdrop-blur-md rounded-2xl px-6 py-3 flex items-center gap-4 text-white shadow-xl border border-white/5 translate-x-2">
-                    <span className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em]">Then</span>
-                    <CornerDownRight size={20} className="text-white/80" />
-                    <span className="text-lg font-bold truncate max-w-[300px]" dangerouslySetInnerHTML={{ __html: navigationSteps[activeStepIndex + 1]?.instructions }} />
+          {/* Coolwalk Notification & Call Overlay */}
+          <AnimatePresence>
+            {notifications.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 30 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 30 }}
+                className="absolute bottom-6 left-6 right-6 z-[200] pointer-events-none"
+              >
+                <div className={`backdrop-blur-3xl border rounded-[2.5rem] p-6 shadow-2xl flex items-center gap-6 pointer-events-auto max-w-[600px] mx-auto ${notifications[0].category === 'call' ? 'bg-green-600/90 border-green-400/20' : 'bg-[#1c1c1e]/90 border-white/10'}`}>
+                  <div className={`w-16 h-16 rounded-[1.5rem] flex items-center justify-center shrink-0 ${notifications[0].category === 'call' ? 'bg-white text-green-600 animate-bounce' : 'bg-blue-500/20 text-blue-400'}`}>
+                    <Phone size={32} fill={notifications[0].category === 'call' ? 'currentColor' : 'none'} />
                   </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Speedometer (Bottom Left Circular Gauge - Official Style) */}
-          {isNavigating && (
-            <div className="absolute bottom-10 left-10 z-[110] pointer-events-none animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <div className="bg-white rounded-full w-24 h-24 shadow-[0_12px_48px_-12px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center border-4 border-zinc-100 ring-4 ring-black/5">
-                <span className="text-4xl font-black text-black leading-none">{currentSpeed}</span>
-                <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mt-1">km/h</span>
-              </div>
-            </div>
-          )}
-
-          {/* Active Navigation: Feature-Rich ETA Pill (Bottom Centered White Pill) */}
-          {isNavigating && routes[selectedRouteIndex] && (
-            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[100] pointer-events-auto animate-in slide-in-from-bottom duration-700">
-              <div className="bg-white rounded-full shadow-[0_24px_64px_-16px_rgba(0,0,0,0.5)] flex items-center p-2.5 min-w-[500px] gap-2 ring-1 ring-black/5">
-                <button onClick={endNavigation} className="w-14 h-14 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center text-zinc-800 transition-all active:scale-90 shadow-sm">
-                  <X size={28} strokeWidth={2.5} />
-                </button>
-                <div className="flex-1 flex items-center justify-center gap-8 py-2 px-8">
-                  <div className="flex flex-col items-center">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[28px] font-black text-[#1a7344] leading-none">{routes[selectedRouteIndex].legs[0].duration.text}</span>
-                      <Leaf size={20} fill="#1a7344" className="text-[#1a7344]" />
-                    </div>
-                    <div className="flex items-center gap-3 mt-1.5 text-zinc-500">
-                      <span className="text-xs font-bold uppercase tracking-widest">{routes[selectedRouteIndex].legs[0].distance.text}</span>
-                      <div className="w-1 h-1 rounded-full bg-zinc-300" />
-                      <span className="text-xs font-bold uppercase tracking-widest">
-                        {(() => {
-                          const now = new Date();
-                          const durationSec = routes[selectedRouteIndex].legs[0].duration.value;
-                          now.setSeconds(now.getSeconds() + durationSec);
-                          return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                        })()}
-                      </span>
-                    </div>
+                  <div className="flex-1 min-w-0">
+                    <span className={`text-xs font-black uppercase tracking-[0.2em] ${notifications[0].category === 'call' ? 'text-white/60' : 'text-blue-400'}`}>
+                      {notifications[0].category === 'call' ? 'Incoming Call' : notifications[0].package?.split('.').pop() || 'Notification'}
+                    </span>
+                    <h3 className="text-white text-xl font-bold truncate leading-tight mt-1">{notifications[0].title}</h3>
+                    <p className="text-white/60 text-sm truncate mt-0.5 font-medium">{notifications[0].text}</p>
                   </div>
-                </div>
-                <div className="flex items-center gap-2 pr-2">
-                  <button className="w-14 h-14 rounded-full bg-zinc-50 hover:bg-zinc-100 flex items-center justify-center text-zinc-600 transition-all active:scale-95 border border-zinc-100">
-                    <Split size={24} />
-                  </button>
-                  <button onClick={() => setActiveStepIndex(p => Math.min(p + 1, navigationSteps.length - 1))} className="w-14 h-14 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center text-zinc-500 transition-all active:scale-95 italic font-black text-xs shadow-sm">SIM</button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Floating Map Search/Directions Card - Google Maps Style (White) */}
-          <div className={`absolute top-6 left-6 w-[380px] max-h-[calc(100%-48px)] flex flex-col gap-3 transition-all duration-500 ${isNavigating ? 'opacity-0 pointer-events-none -translate-x-10' : 'z-50 pointer-events-none opacity-100'}`}>
-            <div className="bg-white rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.22)] pointer-events-auto overflow-hidden flex flex-col">
-
-              <div className="px-4 pt-4 pb-2 flex flex-col">
-                {showDirectionsPanel ? (
-                  <div className="flex flex-col animate-in fade-in slide-in-from-top-2 duration-300">
-                    {/* Travel Modes - Google style pills */}
-                    <div className="flex items-center gap-1.5 pb-4 border-b border-gray-100 mb-4">
-                      {[
-                        { id: 'DRIVING', icon: <Car size={18} />, label: 'Drive' },
-                        { id: 'BICYCLING', icon: <Bike size={18} />, label: 'Cycle' },
-                        { id: 'TRANSIT', icon: <BusFront size={18} />, label: 'Transit' },
-                        { id: 'WALKING', icon: <Footprints size={18} />, label: 'Walk' }
-                      ].map(mode => (
-                        <button
-                          key={mode.id}
-                          onClick={() => { setTravelMode(mode.id); if (selectedPlace) fetchRoutes(selectedPlace, mode.id, originPlace); }}
-                          className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold transition-all shrink-0 ${travelMode === mode.id
-                            ? 'bg-[#e8f0fe] text-[#1967d2]'
-                            : 'text-gray-500 hover:bg-gray-100'
-                            }`}
-                        >
-                          {mode.icon}
-                        </button>
-                      ))}
-                      <button className="ml-auto w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-full transition-colors" onClick={() => setShowDirectionsPanel(false)}><X size={18} /></button>
-                    </div>
-
-                    {/* Inputs Group - Google Maps Style */}
-                    <div className="flex items-stretch gap-3 mb-1">
-                      {/* Connection Line */}
-                      <div className="flex flex-col items-center justify-between py-4 w-5 shrink-0 ml-1">
-                        <div className="w-3 h-3 rounded-full border-2 border-gray-400"></div>
-                        <div className="flex-1 border-l border-dashed border-gray-300 my-1"></div>
-                        <MapPin size={16} className="text-[#ea4335] fill-[#ea4335]" />
-                      </div>
-
-                      <div className="flex-1 flex flex-col gap-2">
-                        {/* Origin Input */}
-                        <div className={`h-[50px] rounded-xl flex items-center gap-2 px-3 bg-gray-50 border ${!originPlace ? 'border-[#1a73e8]' : 'border-transparent'}`}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="#9aa0a6" strokeWidth="2" /><path d="m21 21-4.35-4.35" stroke="#9aa0a6" strokeWidth="2" strokeLinecap="round" /></svg>
-                          <div className="flex-1 overflow-hidden">
-                            <gmpx-place-picker
-                              ref={originPickerRef}
-                              placeholder={originPlace === 'CURRENT_LOCATION' ? 'Your location' : 'Enter starting point'}
-                              for-map="main-map"
-                              style={{
-                                width: '100%',
-                                '--gmpx-color-surface': 'transparent',
-                                '--gmpx-color-on-surface': '#202124',
-                                '--gmpx-border-radius': '0',
-                                '--gmpx-font-family': 'Google Sans, Inter, sans-serif',
-                                '--gmpx-font-size-base': '0.95rem',
-                                '--gmpx-placeholder-color': '#9aa0a6'
-                              }}
-                            ></gmpx-place-picker>
-                          </div>
-                        </div>
-                        {/* Destination Input */}
-                        <div className="h-[50px] rounded-xl flex items-center gap-2 px-3 bg-gray-50 border border-transparent">
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="#9aa0a6" strokeWidth="2" /><path d="m21 21-4.35-4.35" stroke="#9aa0a6" strokeWidth="2" strokeLinecap="round" /></svg>
-                          <div className="flex-1 overflow-hidden">
-                            <gmpx-place-picker
-                              ref={destinationPickerRef}
-                              placeholder="Choose destination"
-                              for-map="main-map"
-                              style={{
-                                width: '100%',
-                                '--gmpx-color-surface': 'transparent',
-                                '--gmpx-color-on-surface': '#202124',
-                                '--gmpx-border-radius': '0',
-                                '--gmpx-font-family': 'Google Sans, Inter, sans-serif',
-                                '--gmpx-font-size-base': '0.95rem',
-                                '--gmpx-placeholder-color': '#9aa0a6'
-                              }}
-                            ></gmpx-place-picker>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Swap Button */}
-                      <div className="flex items-center justify-center">
-                        <button onClick={swapLocations} className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 border border-gray-200 transition-all active:scale-90">
-                          <Split size={18} className="rotate-90" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {/* Search Pill - Google Maps Style */}
-                    <div className="h-14 rounded-xl flex items-center px-3 gap-3 bg-white border border-gray-200 shadow-sm mb-3 focus-within:shadow-md focus-within:border-[#1a73e8] transition-all">
-                      <GoogleMapsLogo size={22} className="shrink-0" />
-                      <div className="flex-1 overflow-hidden">
-                        <gmpx-place-picker
-                          ref={pickerRef}
-                          placeholder="Search here"
-                          for-map="main-map"
-                          style={{
-                            width: '100%',
-                            '--gmpx-color-surface': 'transparent',
-                            '--gmpx-color-on-surface': '#202124',
-                            '--gmpx-border-radius': '0',
-                            '--gmpx-font-family': 'Google Sans, Inter, sans-serif',
-                            '--gmpx-font-size-base': '1rem',
-                            '--gmpx-placeholder-color': '#9aa0a6'
-                          }}
-                        ></gmpx-place-picker>
-                      </div>
-                      <button onClick={() => setShowDirectionsPanel(true)} className="w-9 h-9 rounded-full bg-[#1a73e8] flex items-center justify-center text-white shrink-0 shadow hover:bg-[#1557b0] active:scale-95 transition-all">
-                        <Navigation size={16} fill="white" className="-rotate-45" />
-                      </button>
-                    </div>
-                  </>
-                )}
-
-                {/* Your Location quick pick */}
-                {showDirectionsPanel && !originPlace && (
-                  <div className="px-4 pb-3 pt-1 border-t border-gray-100">
-                    <button onClick={() => { setOriginPlace('CURRENT_LOCATION'); if (selectedPlace) fetchRoutes(selectedPlace, travelMode, 'CURRENT_LOCATION'); }} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 transition-colors text-left w-full group">
-                      <div className="w-10 h-10 rounded-full bg-[#e8f0fe] flex items-center justify-center shrink-0 text-[#1a73e8]">
-                        <Navigation size={18} fill="#1a73e8" />
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[#202124] font-semibold text-sm">Your location</span>
-                        <span className="text-[#80868b] text-xs">Use your current GPS position</span>
-                      </div>
+                  <div className="flex gap-3">
+                    {notifications[0].category === 'call' && (
+                      <button className="w-12 h-12 rounded-full bg-white text-green-600 flex items-center justify-center shadow-lg active:scale-95 transition-all"><Phone size={24} fill="currentColor" /></button>
+                    )}
+                    <button onClick={() => setNotifications(prev => prev.slice(1))} className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${notifications[0].category === 'call' ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-white/10 text-white hover:bg-white/20'}`}>
+                      <X size={24} />
                     </button>
                   </div>
-                )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-                {!showDirectionsPanel && !isNavigating && !selectedPlace && (deviceProfile.home || deviceProfile.work) && (
-                  <div className="flex flex-col border-t border-gray-100 pt-1">
-                    {deviceProfile.home && (
-                      <button onClick={() => routeToSavedLoc(deviceProfile.home)} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
-                        <div className="w-10 h-10 rounded-full bg-[#fce8e6] flex items-center justify-center shrink-0">
-                          <Home size={18} className="text-[#ea4335]" />
-                        </div>
-                        <div className="flex flex-col flex-1">
-                          <span className="text-[#202124] font-semibold text-sm">Home</span>
-                          <span className="text-[#80868b] text-xs">12 min · 4.2 mi</span>
-                        </div>
-                      </button>
-                    )}
-                    {deviceProfile.work && (
-                      <button onClick={() => routeToSavedLoc(deviceProfile.work)} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
-                        <div className="w-10 h-10 rounded-full bg-[#e8f0fe] flex items-center justify-center shrink-0">
-                          <Briefcase size={18} className="text-[#1a73e8]" />
-                        </div>
-                        <div className="flex flex-col flex-1">
-                          <span className="text-[#202124] font-semibold text-sm">Work</span>
-                          <span className="text-[#80868b] text-xs">28 min · 8.3 mi</span>
-                        </div>
-                      </button>
-                    )}
+          {/* Simplified Map UI: "Where to?" Card */}
+          {!isNavigating && (
+            <div className="absolute top-6 left-6 w-[400px] z-50 pointer-events-none">
+              <div className="bg-white/95 backdrop-blur-3xl rounded-[2.5rem] p-2 shadow-2xl pointer-events-auto border border-gray-100 ring-1 ring-black/5">
+                <div className="flex items-center gap-3 h-14 px-5">
+                  <GoogleMapsLogo size={28} />
+                  <div className="flex-1 overflow-hidden">
+                    <gmpx-place-picker
+                      ref={pickerRef}
+                      placeholder="Where to?"
+                      for-map="main-map"
+                      style={{ width: '100%', '--gmpx-color-surface': 'transparent', '--gmpx-border-radius': '0', '--gmpx-font-family': 'Google Sans, Inter, sans-serif' }}
+                    ></gmpx-place-picker>
                   </div>
-                )}
-              </div>
-
-              {selectedPlace && !isNavigating && (
-                <div className="flex flex-col border-t border-gray-100 rounded-b-2xl overflow-hidden">
-                  {/* Summary Block */}
-                  {routes[selectedRouteIndex] && (
-                    <div className="px-4 pt-4 pb-2">
-                      <div className="flex items-baseline gap-2 mb-0.5">
-                        <span className="text-[28px] font-black text-[#1a73e8] leading-tight">{routes[selectedRouteIndex].legs[0].duration.text}</span>
-                        <span className="text-sm font-bold text-gray-500">({routes[selectedRouteIndex].legs[0].distance.text})</span>
-                      </div>
-                      <p className="text-xs text-gray-400 mb-3">Fastest route · {(() => { const now = new Date(); now.setSeconds(now.getSeconds() + routes[selectedRouteIndex].legs[0].duration.value); return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); })()}</p>
-
-                      {/* Start Button - Full width teal, prominent */}
-                      <button
-                        onClick={startNavigation}
-                        className="w-full h-13 bg-[#1a73e8] hover:bg-[#1557b0] text-white py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-base shadow active:scale-95 transition-all mb-3"
-                      >
-                        <Navigation size={18} fill="white" className="-rotate-45" />
-                        Start
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Route List - Android Auto style horizontal cards */}
-                  {routes.length > 1 && (
-                    <div className="overflow-x-auto flex gap-2 px-4 pb-4" style={{ scrollbarWidth: 'none' }}>
-                      {routes.map((route, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => selectRoute(idx)}
-                          className={`flex-shrink-0 px-4 py-3 rounded-xl border-2 transition-all flex flex-col gap-0.5 min-w-[160px] text-left ${selectedRouteIndex === idx ? 'border-[#1a73e8] bg-[#e8f0fe]' : 'border-gray-200 bg-gray-50 hover:bg-gray-100'}`}
-                        >
-                          <span className={`text-lg font-black leading-tight ${selectedRouteIndex === idx ? 'text-[#1a73e8]' : 'text-[#202124]'}`}>
-                            {route.legs[0].duration.text}
-                          </span>
-                          <span className={`text-xs font-semibold truncate ${selectedRouteIndex === idx ? 'text-[#1557b0]' : 'text-gray-500'}`}>
-                            via {route.summary}
-                          </span>
-                          <span className={`text-[11px] mt-0.5 ${selectedRouteIndex === idx ? 'text-[#1a73e8]/70' : 'text-gray-400'}`}>
-                            {route.legs[0].distance.text}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Map Controls */}
-          <div className="absolute right-6 bottom-6 flex flex-col gap-4 z-50">
-            <div className="bg-[#2a2d32]/95 backdrop-blur-3xl p-2 rounded-full border border-white/10 flex flex-col items-center shadow-xl">
-              <button className="w-12 h-12 flex items-center justify-center text-zinc-400 hover:text-white transition-all text-2xl active:bg-white/10 rounded-full" onClick={() => mapRef.current.innerMap.setZoom(mapRef.current.innerMap.getZoom() + 1)}>+</button>
-              <div className="w-8 h-[1px] bg-white/10 my-1" />
-              <button className="w-12 h-12 flex items-center justify-center text-zinc-400 hover:text-white transition-all text-2xl active:bg-white/10 rounded-full" onClick={() => mapRef.current.innerMap.setZoom(mapRef.current.innerMap.getZoom() - 1)}>−</button>
-            </div>
-            <button
-              onClick={() => { if (currentCoords) mapRef.current.center = { lat: currentCoords.latitude, lng: currentCoords.longitude }; }}
-              className="w-16 h-16 bg-[#2a2d32]/95 backdrop-blur-3xl border border-white/10 text-white rounded-full flex items-center justify-center shadow-xl active:scale-95 transition-all group"
-            >
-              <Navigation size={24} strokeWidth={2.5} className="rotate-45" />
-            </button>
-          </div>
-
-        </div>
-
-        {/* Media Player Section (Secondary 30% Panel) - Full-bleed album art */}
-        <div className="w-[30%] min-w-[320px] rounded-2xl overflow-hidden relative flex flex-col shadow-2xl transition-all duration-700 bg-black">
-
-          {/* Full-bleed album art as background */}
-          {playbackState?.item?.album?.images?.[0]?.url && (
-            <>
-              <img
-                key={playbackState.item.album.images[0].url}
-                src={playbackState.item.album.images[0].url}
-                alt=""
-                className="absolute inset-0 w-full h-full object-cover transition-all duration-700"
-                style={{ filter: 'brightness(0.35) saturate(1.1)' }}
-              />
-            </>
-          )}
-
-          {/* If no art or no token — dark fallback */}
-          {!playbackState?.item && (
-            <div className="absolute inset-0 bg-gradient-to-br from-[#1a1c1e] to-[#0a0a0a]" />
-          )}
-
-          {!spotifyToken ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 relative z-10 text-center">
-              <img src="/spotify-logo.png" alt="Spotify" className="w-20 h-20 rounded-2xl shadow-lg mb-8 object-contain" />
-              <h2 className="text-2xl font-bold text-white mb-2">Connect Spotify</h2>
-              <p className="text-sm text-white/50 mb-8">Link your account to play music while you drive</p>
-              <button onClick={loginToSpotify} className="w-full h-14 bg-[#1DB954] text-black font-extrabold rounded-full text-sm tracking-wide active:scale-95 transition-all flex items-center justify-center gap-3">
-                <img src="/spotify-logo.png" alt="" className="w-6 h-6 object-contain" />
-                LINK SPOTIFY
-              </button>
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col relative z-10 min-h-0">
-
-              {/* Top Bar */}
-              <div className="flex justify-between items-center px-5 pt-5 pb-3">
-                <div className="flex items-center gap-2.5">
-                  <img src="/spotify-logo.png" alt="Spotify" className="w-7 h-7 object-contain rounded-md" />
-                  <span className="text-sm font-bold text-white/90 tracking-wide">Spotify</span>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setShowSpotifyBrowser(!showSpotifyBrowser)}
-                    className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${showSpotifyBrowser ? 'bg-[#1DB954] text-black' : 'bg-white/10 text-white hover:bg-white/20'}`}
-                  >
-                    <LayoutGrid size={17} />
+                  <button onClick={() => setShowDirectionsPanel(true)} className="w-11 h-11 rounded-full bg-[#1a73e8] text-white flex items-center justify-center shadow-lg active:scale-95 transition-all">
+                    <Navigation size={20} fill="white" className="-rotate-45" />
                   </button>
                 </div>
               </div>
-
-              {/* Main Media Content */}
-              <div className="flex-1 flex flex-col min-h-0">
-                <AnimatePresence mode="wait">
-                  {!showSpotifyBrowser ? (
-                    <motion.div
-                      key="player"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="flex-1 flex flex-col px-5 pb-5 gap-4 min-h-0"
-                    >
-                      {playbackState?.item ? (
-                        <div className="flex-1 flex flex-col min-h-0 gap-3">
-
-                          {/* Small floating album art thumbnail (not full bleed duplicate) */}
-                          <div className="flex-1 min-h-0 flex items-center justify-center">
-                            <div className="w-48 h-48 rounded-2xl overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.8)] ring-1 ring-white/10">
-                              <img src={playbackState.item.album.images[0].url} alt="Cover" className="w-full h-full object-cover" />
-                            </div>
-                          </div>
-
-                          {/* Track Info */}
-                          <div className="flex justify-between items-start gap-3">
-                            <div className="flex-1 min-w-0">
-                              <h1 className="text-xl font-bold text-white tracking-tight truncate leading-tight">
-                                {playbackState.item.name}
-                              </h1>
-                              <p className="text-sm font-medium text-white/60 truncate mt-0.5">
-                                {playbackState.item.artists.map(a => a.name).join(', ')}
-                              </p>
-                              <p className="text-xs text-white/40 truncate mt-0.5">
-                                {playbackState.item.album.name}
-                              </p>
-                            </div>
-                            <button
-                              onClick={toggleLike}
-                              className={`p-2.5 rounded-full transition-all active:scale-90 shrink-0 ${isLiked ? 'text-[#1DB954]' : 'text-white/50 hover:text-white'}`}
-                            >
-                              <Heart size={22} fill={isLiked ? "currentColor" : "none"} strokeWidth={1.5} />
-                            </button>
-                          </div>
-
-                          {/* Progress Bar */}
-                          <div className="space-y-1.5">
-                            <div
-                              onClick={handleSeek}
-                              className="h-1.5 bg-white/20 rounded-full overflow-hidden relative cursor-pointer group"
-                            >
-                              <div
-                                className="h-full bg-white rounded-full transition-all duration-1000"
-                                style={{ width: `${(playbackState.progress_ms / playbackState.item.duration_ms) * 100}%` }}
-                              />
-                            </div>
-                            <div className="flex justify-between text-[11px] font-bold text-white/40">
-                              <span>{fmtMs(playbackState.progress_ms)}</span>
-                              <span>{fmtMs(playbackState.item.duration_ms)}</span>
-                            </div>
-                          </div>
-
-                          {/* Secondary Controls: Shuffle + Repeat */}
-                          <div className="flex justify-between items-center px-1">
-                            <button
-                              onClick={() => spotifyApi.setShuffle(!playbackState.shuffle_state)}
-                              className={`p-2 rounded-full transition-all active:scale-90 ${playbackState.shuffle_state ? 'text-[#1DB954]' : 'text-white/40 hover:text-white'}`}
-                              title="Shuffle"
-                            >
-                              <Shuffle size={18} />
-                            </button>
-
-                            {/* Main Controls */}
-                            <div className="flex items-center gap-4">
-                              <button onClick={() => spotifyApi.skipToPrevious()} className="text-white/80 hover:text-white active:scale-95 transition-all">
-                                <SkipBack size={26} fill="currentColor" />
-                              </button>
-                              <button
-                                onClick={() => (playbackState.is_playing ? spotifyApi.pause() : spotifyApi.play())}
-                                className="w-16 h-16 bg-white text-black rounded-full flex items-center justify-center active:scale-95 transition-all shadow-[0_8px_32px_rgba(0,0,0,0.5)]"
-                              >
-                                {playbackState.is_playing
-                                  ? <Pause size={28} fill="currentColor" />
-                                  : <Play size={28} fill="currentColor" className="ml-1" />
-                                }
-                              </button>
-                              <button onClick={() => spotifyApi.skipToNext()} className="text-white/80 hover:text-white active:scale-95 transition-all">
-                                <SkipForward size={26} fill="currentColor" />
-                              </button>
-                            </div>
-
-                            <button
-                              onClick={() => {
-                                const modes = [0, 1, 2];
-                                const current = playbackState.repeat_state === 'off' ? 0 : playbackState.repeat_state === 'context' ? 1 : 2;
-                                const next = modes[(current + 1) % 3];
-                                spotifyApi.setRepeat(['off', 'context', 'track'][next]);
-                              }}
-                              className={`p-2 rounded-full transition-all active:scale-90 relative ${playbackState.repeat_state !== 'off' ? 'text-[#1DB954]' : 'text-white/40 hover:text-white'}`}
-                              title="Repeat"
-                            >
-                              <Repeat size={18} />
-                              {playbackState.repeat_state === 'track' && (
-                                <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-[#1DB954] text-black rounded-full text-[8px] font-black flex items-center justify-center leading-none">1</span>
-                              )}
-                            </button>
-                          </div>
-
-                          {/* Volume Slider */}
-                          <div className="flex items-center gap-3 px-1">
-                            <Volume2 size={15} className="text-white/40 shrink-0" />
-                            <input
-                              type="range"
-                              min="0"
-                              max="100"
-                              value={playbackState.device?.volume_percent ?? 50}
-                              onChange={(e) => spotifyApi.setVolume(parseInt(e.target.value))}
-                              className="flex-1 h-1 accent-white cursor-pointer"
-                              style={{ accentColor: '#1DB954' }}
-                            />
-                          </div>
-
-                          {/* Up Next */}
-                          {upNext && upNext[0] && (
-                            <div className="flex items-center gap-3 bg-black/30 rounded-xl px-3 py-2.5 backdrop-blur-sm">
-                              <div className="w-8 h-8 rounded-md overflow-hidden shrink-0">
-                                <img src={upNext[0].album?.images?.[0]?.url} alt="" className="w-full h-full object-cover" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Up Next</p>
-                                <p className="text-xs text-white/80 font-semibold truncate">{upNext[0].name}</p>
-                              </div>
-                            </div>
-                          )}
-
-                        </div>
-                      ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center gap-6">
-                          <img src="/spotify-logo.png" alt="Spotify" className="w-16 h-16 object-contain rounded-xl opacity-60" />
-                          <p className="text-sm font-bold text-white/40 uppercase tracking-widest">{isPlayerReady ? 'Dashboard Ready' : 'Connecting...'}</p>
-                          {isPlayerReady && !playbackState?.item && (
-                            <button
-                              onClick={transferPlayback}
-                              className="px-8 py-4 bg-[#1DB954] text-black font-extrabold rounded-full text-sm transition-all active:scale-95"
-                            >
-                              START PLAYER
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="browser"
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -20 }}
-                      className="flex-1 flex flex-col pt-2 pb-5 px-5 overflow-hidden min-h-0"
-                    >
-                      <h2 className="text-lg font-bold text-white mb-4">Your Library</h2>
-                      <div className="flex-1 overflow-y-auto flex flex-col gap-2.5 pr-1" style={{ scrollbarWidth: 'none' }}>
-                        {playlists?.length > 0 ? (
-                          playlists.map((pl) => (
-                            <button
-                              key={pl.id}
-                              onClick={() => { spotifyApi.play({ context_uri: pl.uri }); setShowSpotifyBrowser(false); }}
-                              className="flex items-center gap-3 p-3 rounded-xl bg-white/10 hover:bg-white/20 active:scale-[0.98] transition-all text-left"
-                            >
-                              <div className="w-12 h-12 rounded-lg overflow-hidden shrink-0 bg-black/50">
-                                <img src={pl.images?.[0]?.url} alt="" className="w-full h-full object-cover" />
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <p className="text-sm font-bold text-white truncate">{pl.name}</p>
-                                <p className="text-xs font-medium text-white/50">{pl?.tracks?.total || 0} tracks</p>
-                              </div>
-                            </button>
-                          ))
-                        ) : (
-                          <div className="flex-1 flex flex-col items-center justify-center gap-4 opacity-40">
-                            <Music2 size={40} className="text-white" />
-                            <p className="text-sm font-bold text-white">Loading playlists...</p>
-                          </div>
-                        )}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-
             </div>
           )}
+
+          {/* Navigation ETA Overlay (Simplified Pill) */}
+          <AnimatePresence>
+            {isNavigating && routes[selectedRouteIndex] && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[100] pointer-events-auto"
+              >
+                <div className="bg-white rounded-[2rem] shadow-2xl flex items-center px-8 py-3 gap-6 border border-gray-100 ring-1 ring-black/5">
+                  <div className="flex flex-col items-center">
+                    <span className="text-2xl font-black text-[#1a7344] leading-tight">{routes[selectedRouteIndex].legs[0].duration.text}</span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{routes[selectedRouteIndex].legs[0].distance.text}</span>
+                  </div>
+                  <div className="w-[1px] h-8 bg-gray-100" />
+                  <div className="flex flex-col items-center">
+                    <span className="text-2xl font-black text-gray-800 leading-tight">
+                      {(() => {
+                        const now = new Date();
+                        const durationSec = routes[selectedRouteIndex].legs[0].duration.value;
+                        now.setSeconds(now.getSeconds() + durationSec);
+                        return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                      })()}
+                    </span>
+                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Arrival</span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Persistent Map Controls */}
+          <div className="absolute right-6 bottom-6 flex flex-col gap-4 z-40">
+            <button
+              onClick={() => { if (currentCoords) mapRef.current.center = { lat: currentCoords.latitude, lng: currentCoords.longitude }; }}
+              className="w-16 h-16 bg-white text-[#1a73e8] rounded-[2rem] flex items-center justify-center shadow-2xl border border-gray-100 active:scale-95 transition-all"
+            >
+              <CircleChevronUp size={32} strokeWidth={2.5} />
+            </button>
+          </div>
+        </div>
+
+        {/* Secondary Slot - Media & System Info */}
+        <div className="w-[380px] flex flex-col gap-4">
+
+          {/* Spotify Premium Card */}
+          <div className="flex-1 aa-card flex flex-col relative overflow-hidden group">
+            {playbackState?.item?.album?.images?.[0]?.url && (
+              <img src={playbackState.item.album.images[0].url} className="absolute inset-0 w-full h-full object-cover blur-[100px] opacity-40 saturate-150 transition-opacity duration-1000" />
+            )}
+
+            <div className="p-6 flex-1 flex flex-col relative z-20 min-h-0">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-6 rounded-full bg-[#1DB954] flex items-center justify-center">
+                    <SpotifyLogo size={14} className="text-black" />
+                  </div>
+                  <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Playing on Spotify</span>
+                </div>
+                <button onClick={() => setShowSpotifyBrowser(!showSpotifyBrowser)} className="w-10 h-10 rounded-full bg-white/5 flex items-center justify-center text-white/40 hover:text-white transition-all"><LayoutGrid size={20} /></button>
+              </div>
+
+              <AnimatePresence mode="wait">
+                {!showSpotifyBrowser ? (
+                  <motion.div key="player" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col gap-8">
+                    {playbackState?.item ? (
+                      <>
+                        <div className="aspect-square rounded-[2rem] overflow-hidden shadow-2xl border border-white/5 relative group-hover:scale-[1.02] transition-transform duration-500">
+                          <img src={playbackState.item.album.images[0].url} className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                        </div>
+                        <div className="space-y-1">
+                          <h2 className="text-2xl font-bold text-white leading-tight truncate tracking-tight">{playbackState.item.name}</h2>
+                          <p className="text-lg font-medium text-[#1DB954] truncate opacity-90">{playbackState.item.artists[0]?.name}</p>
+                        </div>
+                        <div className="mt-auto flex items-center justify-between px-2">
+                          <button onClick={() => spotifyApi.skipToPrevious()} className="text-white/60 hover:text-white transition-transform active:scale-90"><SkipBack size={36} fill="currentColor" /></button>
+                          <button
+                            onClick={() => (playbackState.is_playing ? spotifyApi.pause() : spotifyApi.play())}
+                            className="w-24 h-24 bg-white text-black rounded-full flex items-center justify-center shadow-2xl active:scale-90 hover:scale-105 transition-all"
+                          >
+                            {playbackState.is_playing ? <Pause size={44} fill="currentColor" /> : <Play size={44} fill="currentColor" className="ml-1" />}
+                          </button>
+                          <button onClick={() => spotifyApi.skipToNext()} className="text-white/60 hover:text-white transition-transform active:scale-90"><SkipForward size={36} fill="currentColor" /></button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center opacity-20">
+                        <Music2 size={100} strokeWidth={1} />
+                        <p className="mt-6 font-black uppercase tracking-[0.4em] text-xs">Media Hub Ready</p>
+                      </div>
+                    )}
+                  </motion.div>
+                ) : (
+                  <motion.div key="browser" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex-1 flex flex-col min-h-0">
+                    <h3 className="text-xl font-bold mb-4 tracking-tight">Your Playlists</h3>
+                    <div className="flex-1 overflow-y-auto space-y-2 pr-2 custom-scrollbar">
+                      {playlists?.map(pl => (
+                        <button key={pl.id} onClick={() => { spotifyApi.play({ context_uri: pl.uri }); setShowSpotifyBrowser(false); }} className="w-full flex items-center gap-4 p-4 rounded-3xl bg-white/5 hover:bg-white/10 active:scale-[0.98] transition-all text-left group/pl">
+                          <img src={pl.images?.[0]?.url} className="w-14 h-14 rounded-2xl object-cover shadow-lg group-hover/pl:scale-105 transition-transform" />
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold truncate text-base">{pl.name}</p>
+                            <p className="text-xs text-white/40 font-medium">{pl.tracks?.total} tracks</p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+
+          {/* Connected Hub Widget */}
+          <div className="h-[220px] aa-card p-6 flex flex-col justify-between group overflow-hidden relative">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 blur-[80px] rounded-full group-hover:bg-blue-500/20 transition-all duration-1000" />
+            <div className="flex justify-between items-start relative z-10">
+              <div>
+                <span className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">Connectivity</span>
+                <div className="flex items-center gap-4 mt-3">
+                  <Signal size={24} className={networkStatus.connected ? "text-blue-500" : "text-white/10"} />
+                  <Wifi size={24} className={networkStatus.activeType === 'wifi' ? "text-blue-500" : "text-white/10"} />
+                  <div className="w-px h-6 bg-white/5" />
+                  <div className={`flex items-center gap-1.5 ${batteryInfo.isCharging ? "text-green-500" : "text-white/60"}`}>
+                    <Battery size={24} />
+                    <span className="text-xs font-black">94%</span>
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="flex items-center gap-2 justify-end mb-1">
+                  <Cloud size={28} className="text-blue-400" />
+                  <span className="text-2xl font-black">22°</span>
+                </div>
+                <span className="text-[9px] font-black text-white/20 uppercase tracking-[0.2em]">Sunny · Cupertino</span>
+              </div>
+            </div>
+            <div className="flex items-end justify-between relative z-10">
+              <div className="flex flex-col">
+                <span className="text-[10px] font-black text-white/20 uppercase tracking-[0.3em]">System Node</span>
+                <span className="text-lg font-bold mt-1 tracking-tight">Android Tablet Pro</span>
+              </div>
+              <div className="w-3 h-3 rounded-full bg-green-500 shadow-[0_0_20px_rgba(34,197,94,0.6)] animate-pulse"></div>
+            </div>
+          </div>
+
         </div>
       </main>
 
-      {/* App Drawer Overlay */}
+      {/* Immersive App Drawer */}
       <AnimatePresence>
         {showAppDrawer && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-[200] bg-black/95 backdrop-blur-[80px] flex flex-col"
+            className="absolute inset-0 z-[200] bg-black/95 backdrop-blur-[100px] flex flex-col"
           >
-            <div className="p-20 flex flex-col h-full">
-              <div className="flex justify-between items-center mb-24">
+            <div className="p-16 flex flex-col h-full max-w-[1200px] mx-auto w-full">
+              <div className="flex justify-between items-end mb-16">
                 <div className="space-y-2">
-                  <h2 className="text-8xl font-black text-white tracking-tighter">Apps</h2>
-                  <p className="text-xl font-bold text-white/20 uppercase tracking-[0.4em]">Android Auto Tablet v1.0</p>
+                  <h2 className="text-7xl font-black text-white tracking-tighter">Launcher</h2>
+                  <p className="text-sm font-black text-white/20 uppercase tracking-[1em]">Android Tablet Edition</p>
                 </div>
                 <button
                   onClick={() => setShowAppDrawer(false)}
-                  className="w-24 h-24 flex items-center justify-center bg-white text-black rounded-full hover:scale-110 active:scale-95 transition-all shadow-2xl"
+                  className="w-20 h-20 flex items-center justify-center bg-white text-black rounded-full hover:scale-110 active:scale-95 transition-all shadow-2xl"
                 >
-                  <X size={48} />
+                  <X size={40} />
                 </button>
               </div>
 
-              <div className="grid grid-cols-4 md:grid-cols-5 gap-12 overflow-y-auto custom-scrollbar pr-10">
+              <div className="grid grid-cols-4 md:grid-cols-5 gap-12 overflow-y-auto custom-scrollbar pr-4">
                 {[
-                  { name: 'Navigation', icon: <Navigation size={56} />, bg: 'bg-white', text: 'text-black' },
-                  { name: 'Music', icon: <Music2 size={56} />, bg: 'bg-green-500', text: 'text-black' },
-                  { name: 'Messaging', icon: <Mic size={56} />, bg: 'bg-blue-600', text: 'text-white' },
-                  { name: 'Phone', icon: <Phone size={56} />, bg: 'bg-zinc-800', text: 'text-green-500' },
-                  { name: 'Status', icon: <X size={56} />, bg: 'bg-zinc-900', text: 'text-white' },
+                  { name: 'Maps', icon: <Navigation size={56} fill="white" />, bg: 'bg-[#1a73e8]', text: 'text-white', id: 'maps' },
+                  { name: 'Spotify', icon: <SpotifyLogo size={56} />, bg: 'bg-[#1DB954]', text: 'text-black', id: 'spotify' },
+                  { name: 'Calls', icon: <Phone size={56} />, bg: 'bg-[#34a853]', text: 'text-white', id: 'phone' },
+                  { name: 'Assistant', icon: <Mic size={56} />, bg: 'bg-[#4285f4]', text: 'text-white', id: 'assistant' },
+                  { name: 'Settings', icon: <SettingsIcon size={56} />, bg: 'bg-zinc-800', text: 'text-white', id: 'settings' },
                 ].map((app, index) => (
                   <motion.button
                     key={index}
-                    whileHover={{ y: -10, scale: 1.05 }}
+                    whileHover={{ y: -12, scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
-                    onClick={() => setShowAppDrawer(false)}
+                    onClick={() => {
+                      if (app.id === 'settings') { setShowSettings(true); setShowAppDrawer(false); }
+                      else { setActiveTab(app.id); setShowAppDrawer(false); }
+                    }}
                     className="flex flex-col items-center gap-6 group"
                   >
-                    <div className={`w-32 h-32 rounded-2xl ${app.bg} ${app.text} flex items-center justify-center shadow-lg border border-white/5 transition-all duration-500 group-hover:shadow-white/10`}>
+                    <div className={`w-36 h-36 rounded-[2.5rem] ${app.bg} ${app.text} flex items-center justify-center shadow-2xl border border-white/5 transition-all duration-500 group-hover:shadow-[0_20px_60px_-15px_rgba(255,255,255,0.1)]`}>
                       {app.icon}
                     </div>
-                    <span className="text-sm font-bold text-zinc-400 uppercase tracking-widest group-hover:text-white transition-colors">{app.name}</span>
+                    <span className="text-xs font-black text-white/40 uppercase tracking-[0.3em] group-hover:text-white transition-colors">{app.name}</span>
                   </motion.button>
                 ))}
               </div>
@@ -1572,7 +1275,6 @@ export default function App() {
   );
 }
 
-// --- Device Settings Modal ---
 function DeviceSettings({ show, onClose, profile, setProfile }) {
   const homeRef = useRef(null);
   const workRef = useRef(null);
@@ -1594,10 +1296,8 @@ function DeviceSettings({ show, onClose, profile, setProfile }) {
 
     const hr = homeRef.current;
     const wr = workRef.current;
-
     if (hr) hr.addEventListener('gmpx-placechange', (e) => handlePlace('home', e));
     if (wr) wr.addEventListener('gmpx-placechange', (e) => handlePlace('work', e));
-
     return () => {
       if (hr) hr.removeEventListener('gmpx-placechange', handlePlace);
       if (wr) wr.removeEventListener('gmpx-placechange', handlePlace);
@@ -1607,52 +1307,52 @@ function DeviceSettings({ show, onClose, profile, setProfile }) {
   return (
     <AnimatePresence>
       {show && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[150] bg-black/80 backdrop-blur-2xl flex p-10 justify-center items-center">
-          <div className="bg-[#111] border border-white/10 rounded-[3rem] p-12 w-full max-w-2xl shadow-2xl relative">
-            <button onClick={onClose} className="absolute top-8 right-8 w-12 h-12 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center transition-all"><X size={24} /></button>
-            <h2 className="text-4xl font-black text-white mb-8 flex items-center gap-4"><User size={40} className="text-purple-500" /> Device Profile</h2>
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 z-[300] bg-black/80 backdrop-blur-3xl flex p-10 justify-center items-center">
+          <div className="bg-[#1c1c1e] border border-white/10 rounded-[3rem] p-12 w-full max-w-2xl shadow-2xl relative">
+            <button onClick={onClose} className="absolute top-8 right-8 w-14 h-14 bg-white/5 hover:bg-white/10 rounded-full flex items-center justify-center transition-all active:scale-95"><X size={28} /></button>
+            <h2 className="text-4xl font-black text-white mb-10 tracking-tight flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-zinc-400">
+                <SettingsIcon size={28} />
+              </div>
+              Settings
+            </h2>
 
             <div className="space-y-8">
-              <div className="bg-white/5 p-6 rounded-3xl border border-white/5 flex items-center justify-between">
-                <div>
-                  <h3 className="text-xl font-bold text-white mb-1">Google Account</h3>
-                  <p className="text-sm text-zinc-400 font-medium">{profile.isGoogleLinked ? 'Linked to your digital life' : 'Link for calendar and saved places'}</p>
-                </div>
-                <button
-                  onClick={() => setProfile(p => ({ ...p, isGoogleLinked: !p.isGoogleLinked }))}
-                  className={`px-6 py-3 rounded-full font-bold transition-all ${profile.isGoogleLinked ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30' : 'bg-blue-600 text-white hover:bg-blue-500'}`}
-                >
-                  {profile.isGoogleLinked ? 'UNLINK' : 'LINK ACCOUNT'}
-                </button>
-              </div>
-
-              <div className="grid grid-cols-2 gap-6">
-                <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
-                  <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><MapPin size={20} className="text-blue-500" /> Home Address</h3>
-                  {profile.home ? (
-                    <div className="flex justify-between items-start">
-                      <div className="text-sm text-zinc-300 font-medium pr-4">{profile.home.address}</div>
-                      <button onClick={() => setProfile(p => ({ ...p, home: null }))} className="text-red-500 p-2 bg-red-500/10 rounded-full hover:bg-red-500/20 transition-all"><X size={16} /></button>
-                    </div>
-                  ) : (
-                    <div className="bg-white/5 p-2 rounded-xl focus-within:border-blue-500 transition-all border border-transparent">
+              <div className="space-y-4">
+                <span className="text-[10px] font-black text-white/20 uppercase tracking-[0.4em] ml-2">Quick Access</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5">
+                    <Home size={24} className="text-blue-400 mb-3" />
+                    <h4 className="font-bold text-white">Home</h4>
+                    <div className="bg-white/5 p-2 rounded-xl mt-2">
                       <gmpx-place-picker ref={homeRef} placeholder="Search home..." for-map="main-map" style={{ width: '100%', '--gmpx-color-surface': 'transparent', '--gmpx-color-on-surface': '#ffffff', '--gmpx-border-radius': '0' }}></gmpx-place-picker>
                     </div>
-                  )}
-                </div>
-
-                <div className="bg-white/5 p-6 rounded-3xl border border-white/5">
-                  <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><MapPin size={20} className="text-orange-500" /> Work Address</h3>
-                  {profile.work ? (
-                    <div className="flex justify-between items-start">
-                      <div className="text-sm text-zinc-300 font-medium pr-4">{profile.work.address}</div>
-                      <button onClick={() => setProfile(p => ({ ...p, work: null }))} className="text-red-500 p-2 bg-red-500/10 rounded-full hover:bg-red-500/20 transition-all"><X size={16} /></button>
-                    </div>
-                  ) : (
-                    <div className="bg-white/5 p-2 rounded-xl focus-within:border-orange-500 transition-all border border-transparent">
+                  </div>
+                  <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5">
+                    <Briefcase size={24} className="text-purple-400 mb-3" />
+                    <h4 className="font-bold text-white">Work</h4>
+                    <div className="bg-white/5 p-2 rounded-xl mt-2">
                       <gmpx-place-picker ref={workRef} placeholder="Search work..." for-map="main-map" style={{ width: '100%', '--gmpx-color-surface': 'transparent', '--gmpx-color-on-surface': '#ffffff', '--gmpx-border-radius': '0' }}></gmpx-place-picker>
                     </div>
-                  )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <span className="text-[10px] font-black text-white/20 uppercase tracking-[0.4em] ml-2">App Configuration</span>
+                <div className="bg-white/5 p-6 rounded-[2rem] border border-white/5 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-blue-500/20 flex items-center justify-center text-blue-400">
+                      <LayoutGrid size={24} />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-white">Google Services</h4>
+                      <p className="text-xs text-zinc-500">Connected to Maps & Places</p>
+                    </div>
+                  </div>
+                  <div className="w-12 h-6 bg-blue-500 rounded-full flex items-center px-1">
+                    <div className="w-4 h-4 bg-white rounded-full ml-auto" />
+                  </div>
                 </div>
               </div>
             </div>
