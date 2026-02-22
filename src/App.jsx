@@ -34,7 +34,8 @@ import {
   CornerDownRight,
   Leaf,
   ArrowUp,
-  Split
+  Split,
+  CircleChevronUp
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SpotifyWebApi from 'spotify-web-api-js';
