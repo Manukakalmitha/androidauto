@@ -92,7 +92,29 @@ const Visualizer = ({ isPlaying }) => {
   );
 };
 
+import LandingPage from './LandingPage';
+
 export default function App() {
+  // --- Routing State ---
+  const [currentRoute, setCurrentRoute] = useState(window.location.hash === '#/app' ? 'app' : 'landing');
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setCurrentRoute(window.location.hash === '#/app' ? 'app' : 'landing');
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const navigateToApp = () => {
+    window.location.hash = '/app';
+    setCurrentRoute('app');
+  };
+
+  if (currentRoute === 'landing') {
+    return <LandingPage onEnterApp={navigateToApp} />;
+  }
+
   // --- Auth & Config State ---
   const [spotifyToken, setSpotifyToken] = useState(null);
   const tokenRef = useRef(null);

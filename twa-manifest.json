@@ -20,8 +20,8 @@
     "path": "c:/Users/manuk/androidauto/android.keystore",
     "alias": "android"
   },
-  "appVersionName": "1.3",
-  "appVersionCode": 4,
+  "appVersionName": "1.4",
+  "appVersionCode": 5,
   "shortcuts": [],
   "generatorApp": "bubblewrap-cli",
   "webManifestUrl": "https://androidauto-rust.vercel.app/manifest.webmanifest",
@@ -39,5 +39,5 @@
   "additionalTrustedOrigins": [],
   "retainedBundles": [],
   "displayOverride": [],
-  "appVersion": "1.3"
+  "appVersion": "1.4"
 }

@@ -8,13 +8,17 @@
 
 body {
   margin: 0;
-  overflow: hidden;
   background-color: black;
   color: white;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   overscroll-behavior: none;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.dashboard-locked {
+  overflow: hidden;
+  height: 100vh;
 }
 
 /* Custom Scrollbar for Drawer */
