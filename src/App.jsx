@@ -122,6 +122,13 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [currentSpeed, setCurrentSpeed] = useState(0);
 
+  // --- Voice Assistant State ---
+  const [isListening, setIsListening] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [voiceStatus, setVoiceStatus] = useState(''); // 'listening' | 'processing' | 'done'
+  const recognitionRef = useRef(null);
+  const compassHeadingRef = useRef(null); // Magnetometer-based heading
+
   const [deviceProfile, setDeviceProfile] = useState(() => {
     const saved = localStorage.getItem('android-auto-profile');
     if (saved) {
@@ -178,6 +185,33 @@ export default function App() {
     };
     let watchIdPromise = monitorHardware();
 
+    // 2b. Magnetometer Compass (DeviceOrientationEvent — much more accurate than GPS heading)
+    const handleOrientation = (event) => {
+      let heading = null;
+      if (event.webkitCompassHeading !== undefined) {
+        // iOS: webkitCompassHeading gives true north directly
+        heading = event.webkitCompassHeading;
+      } else if (event.absolute && event.alpha !== null) {
+        // Android absolute orientation: convert alpha to compass bearing
+        heading = 360 - event.alpha;
+      } else if (event.alpha !== null) {
+        heading = 360 - event.alpha;
+      }
+      if (heading !== null) compassHeadingRef.current = heading;
+    };
+
+    if (typeof DeviceOrientationEvent !== 'undefined') {
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        // iOS 13+ requires explicit permission
+        DeviceOrientationEvent.requestPermission().then(perm => {
+          if (perm === 'granted') window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+        }).catch(() => { });
+      } else {
+        window.addEventListener('deviceorientationabsolute', handleOrientation, true);
+        window.addEventListener('deviceorientation', handleOrientation, true);
+      }
+    }
+
     // 3. Supabase Auth Listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       console.log("Supabase Auth Event:", event);
@@ -214,6 +248,8 @@ export default function App() {
     return () => {
       clearInterval(timer);
       subscription.unsubscribe();
+      window.removeEventListener('deviceorientationabsolute', handleOrientation, true);
+      window.removeEventListener('deviceorientation', handleOrientation, true);
       watchIdPromise.then(id => {
         if (id) Geolocation.clearWatch({ id });
       });
@@ -223,7 +259,7 @@ export default function App() {
   // --- Dynamic Map Camera Follow ---
   useEffect(() => {
     if (isNavigating && currentCoords && mapRef.current) {
-      const { latitude, longitude, heading } = currentCoords;
+      const { latitude, longitude, heading: gpsHeading } = currentCoords;
       const center = { lat: latitude, lng: longitude };
 
       // Update map center to user's location
@@ -234,7 +270,8 @@ export default function App() {
         markerRef.current.position = center;
       }
 
-      // If we have heading data from GPS, rotate the map to follow
+      // Prefer magnetometer heading (more accurate) over GPS heading
+      const heading = compassHeadingRef.current ?? gpsHeading;
       if (heading !== null && heading !== undefined) {
         mapRef.current.heading = heading;
       }
@@ -244,6 +281,104 @@ export default function App() {
       if (mapRef.current.zoom < 17) mapRef.current.zoom = 18;
     }
   }, [isNavigating, currentCoords]);
+
+  // --- Voice Assistant (Web Speech API) ---
+  const toggleVoiceAssistant = () => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      alert('Voice assistant not supported in this browser.');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current?.stop();
+      setIsListening(false);
+      setVoiceStatus('');
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US';
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognitionRef.current = recognition;
+
+    recognition.onstart = () => {
+      setIsListening(true);
+      setVoiceStatus('listening');
+      setVoiceTranscript('');
+    };
+
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript.toLowerCase().trim();
+      setVoiceTranscript(transcript);
+      setVoiceStatus('processing');
+
+      // Speak acknowledgement
+      const speak = (text) => {
+        window.speechSynthesis.cancel();
+        const utter = new SpeechSynthesisUtterance(text);
+        utter.rate = 1.1;
+        const voices = window.speechSynthesis.getVoices();
+        const femaleVoice = voices.find(v => v.lang.startsWith('en') && (v.name.toLowerCase().includes('samantha') || v.name.toLowerCase().includes('female') || v.name.toLowerCase().includes('google us english'))) || voices.find(v => v.lang.startsWith('en'));
+        if (femaleVoice) utter.voice = femaleVoice;
+        window.speechSynthesis.speak(utter);
+      };
+
+      // Intent parsing
+      if (transcript.includes('navigate to') || transcript.includes('go to') || transcript.includes('take me to') || transcript.includes('directions to')) {
+        const dest = transcript.replace(/navigate to|go to|take me to|directions to/g, '').trim();
+        speak(`Searching for ${dest}`);
+        setVoiceTranscript(`🗺️ Navigating to: "${dest}"`);
+        // Use Google Geocoder to find location and route
+        if (window.google?.maps?.Geocoder) {
+          const geo = new window.google.maps.Geocoder();
+          geo.geocode({ address: dest }, (results, status) => {
+            if (status === 'OK' && results[0]) {
+              const loc = results[0].geometry.location;
+              const place = { location: { lat: loc.lat(), lng: loc.lng() }, displayName: results[0].formatted_address, formattedAddress: results[0].formatted_address };
+              setSelectedPlace(place);
+              fetchRoutes(place, travelMode, originPlace);
+              if (mapRef.current) mapRef.current.center = { lat: loc.lat(), lng: loc.lng() };
+            } else {
+              speak(`Sorry, I couldn't find ${dest}`);
+            }
+          });
+        }
+      } else if (transcript.includes('go home') || transcript.includes('navigate home') || transcript.includes('take me home')) {
+        if (deviceProfile.home) { routeToSavedLoc(deviceProfile.home); speak('Navigating to your home.'); setVoiceTranscript('🏠 Navigating home'); }
+        else { speak('No home address saved.'); setVoiceTranscript('❌ No home address saved'); }
+      } else if (transcript.includes('work') || transcript.includes('go to work') || transcript.includes('take me to work')) {
+        if (deviceProfile.work) { routeToSavedLoc(deviceProfile.work); speak('Navigating to your work.'); setVoiceTranscript('🏢 Navigating to work'); }
+        else { speak('No work address saved.'); setVoiceTranscript('❌ No work address saved'); }
+      } else if (transcript.includes('stop') || transcript.includes('end navigation') || transcript.includes('cancel')) {
+        endNavigation(); speak('Navigation ended.'); setVoiceTranscript('🛑 Navigation stopped');
+      } else if (transcript.includes('music') || transcript.includes('spotify') || transcript.includes('play')) {
+        setActiveTab('spotify'); speak('Opening Spotify.'); setVoiceTranscript('🎵 Opening Spotify');
+      } else if (transcript.includes('maps') || transcript.includes('map')) {
+        setActiveTab('maps'); speak('Switching to Maps.'); setVoiceTranscript('🗺️ Switching to Maps');
+      } else {
+        speak(`I heard: ${transcript}. Try saying navigate to a location, go home, or play music.`);
+        setVoiceTranscript(`❓ "${transcript}" — try: "navigate to [place]"`);
+      }
+
+      setTimeout(() => setVoiceStatus('done'), 3000);
+    };
+
+    recognition.onerror = (event) => {
+      setIsListening(false);
+      setVoiceStatus('');
+      setVoiceTranscript(`❌ Error: ${event.error}`);
+      setTimeout(() => setVoiceTranscript(''), 3000);
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      setTimeout(() => setVoiceStatus(''), 4000);
+    };
+
+    recognition.start();
+  };
 
   // --- Spotify Functions ---
   const loginToSpotify = async () => {
@@ -722,7 +857,7 @@ export default function App() {
         <div className="flex flex-col items-center gap-6 my-auto">
           {[
             { id: 'maps', icon: <GoogleMapsLogo size={42} className="drop-shadow-md" /> },
-            { id: 'spotify', icon: <div className="bg-[#1DB954] p-2.5 rounded-full w-[46px] h-[46px] shadow-md flex items-center justify-center"><SpotifyLogo size={32} /></div> },
+            { id: 'spotify', icon: <SpotifyLogo size={46} /> },
             { id: 'phone', icon: <div className="bg-white rounded-full w-[46px] h-[46px] shadow-md flex items-center justify-center"><Phone size={24} className="text-blue-500 fill-current" /></div> },
           ].map((app) => (
             <button
@@ -737,8 +872,15 @@ export default function App() {
 
         {/* Bottom: Mic and App Grid */}
         <div className="flex flex-col gap-6 items-center mt-4 pt-4 border-t border-[#1e1e1e] w-[60%]">
-          <button onClick={() => setShowSettings(!showSettings)} className="w-14 h-14 flex items-center justify-center rounded-full text-white hover:bg-white/10 transition-colors active:scale-95">
+          <button
+            onClick={toggleVoiceAssistant}
+            className={`w-14 h-14 flex items-center justify-center rounded-full transition-all active:scale-95 relative
+              ${isListening ? 'bg-red-500 text-white shadow-[0_0_20px_rgba(239,68,68,0.5)]' : 'text-white hover:bg-white/10'}`}
+          >
             <Mic size={28} />
+            {isListening && (
+              <span className="absolute inset-0 rounded-full border-2 border-red-400 animate-ping opacity-75"></span>
+            )}
           </button>
           <button onClick={() => setShowAppDrawer(!showAppDrawer)} className="w-14 h-14 flex items-center justify-center rounded-3xl text-white hover:bg-white/10 transition-colors active:scale-95">
             <LayoutGrid size={28} />
@@ -837,143 +979,159 @@ export default function App() {
             </div>
           )}
 
-          {/* Floating Map Search/Directions Card */}
-          <div className={`absolute top-6 left-6 w-[360px] max-h-[calc(100%-48px)] flex flex-col gap-3 transition-all duration-500 ${isNavigating ? 'opacity-0 pointer-events-none -translate-x-10' : 'z-50 pointer-events-none opacity-100'}`}>
-            <div className="bg-[#2a2d32]/95 backdrop-blur-3xl rounded-[28px] shadow-2xl pointer-events-auto overflow-hidden flex flex-col border border-white/10">
+          {/* Floating Map Search/Directions Card - Google Maps Style (White) */}
+          <div className={`absolute top-6 left-6 w-[380px] max-h-[calc(100%-48px)] flex flex-col gap-3 transition-all duration-500 ${isNavigating ? 'opacity-0 pointer-events-none -translate-x-10' : 'z-50 pointer-events-none opacity-100'}`}>
+            <div className="bg-white rounded-2xl shadow-[0_4px_24px_rgba(0,0,0,0.22)] pointer-events-auto overflow-hidden flex flex-col">
 
-              <div className="p-4 flex flex-col">
+              <div className="px-4 pt-4 pb-2 flex flex-col">
                 {showDirectionsPanel ? (
                   <div className="flex flex-col animate-in fade-in slide-in-from-top-2 duration-300">
-                    {/* Travel Modes - Horizontal Scroll */}
-                    <div className="flex items-center gap-2 pb-5 border-b border-white/10 mb-5 px-2">
-                      <button className="w-10 h-10 rounded-full flex items-center justify-center bg-teal-600 text-white shrink-0 shadow shadow-teal-900/50"><Compass size={20} /></button>
+                    {/* Travel Modes - Google style pills */}
+                    <div className="flex items-center gap-1.5 pb-4 border-b border-gray-100 mb-4">
                       {[
-                        { id: 'DRIVING', icon: <Car size={20} /> },
-                        { id: 'BICYCLING', icon: <Bike size={20} /> },
-                        { id: 'TRANSIT', icon: <BusFront size={20} /> },
-                        { id: 'WALKING', icon: <Footprints size={20} /> }
+                        { id: 'DRIVING', icon: <Car size={18} />, label: 'Drive' },
+                        { id: 'BICYCLING', icon: <Bike size={18} />, label: 'Cycle' },
+                        { id: 'TRANSIT', icon: <BusFront size={18} />, label: 'Transit' },
+                        { id: 'WALKING', icon: <Footprints size={18} />, label: 'Walk' }
                       ].map(mode => (
-                        <button key={mode.id} onClick={() => { setTravelMode(mode.id); if (selectedPlace) fetchRoutes(selectedPlace, mode.id, originPlace); }} className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all ${travelMode === mode.id ? 'bg-white/10 text-white' : 'text-zinc-500 hover:text-white hover:bg-white/5'}`}>{mode.icon}</button>
+                        <button
+                          key={mode.id}
+                          onClick={() => { setTravelMode(mode.id); if (selectedPlace) fetchRoutes(selectedPlace, mode.id, originPlace); }}
+                          className={`flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-semibold transition-all shrink-0 ${travelMode === mode.id
+                            ? 'bg-[#e8f0fe] text-[#1967d2]'
+                            : 'text-gray-500 hover:bg-gray-100'
+                            }`}
+                        >
+                          {mode.icon}
+                        </button>
                       ))}
-                      <button className="ml-auto w-10 h-10 flex items-center justify-center text-zinc-500 hover:text-white rounded-full bg-white/5 hover:bg-white/10 transition-colors" onClick={() => setShowDirectionsPanel(false)}><X size={20} /></button>
+                      <button className="ml-auto w-9 h-9 flex items-center justify-center text-gray-500 hover:bg-gray-100 rounded-full transition-colors" onClick={() => setShowDirectionsPanel(false)}><X size={18} /></button>
                     </div>
 
-                    {/* Inputs Group */}
-                    <div className="flex items-stretch gap-4 mb-2 relative px-2">
-                      {/* Connection Line Visual */}
-                      <div className="flex flex-col items-center justify-between py-5 w-6 shrink-0">
-                        <div className="w-2.5 h-2.5 rounded-full border-2 border-zinc-500 bg-transparent ring-2 ring-[#2a2d32]"></div>
-                        <div className="flex-1 w-0.5 border-l border-dashed border-zinc-600 my-1"></div>
-                        <MapPin size={18} className="text-red-500 fill-red-500" />
+                    {/* Inputs Group - Google Maps Style */}
+                    <div className="flex items-stretch gap-3 mb-1">
+                      {/* Connection Line */}
+                      <div className="flex flex-col items-center justify-between py-4 w-5 shrink-0 ml-1">
+                        <div className="w-3 h-3 rounded-full border-2 border-gray-400"></div>
+                        <div className="flex-1 border-l border-dashed border-gray-300 my-1"></div>
+                        <MapPin size={16} className="text-[#ea4335] fill-[#ea4335]" />
                       </div>
 
-                      <div className="flex-1 flex flex-col gap-2.5">
-                        <div className={`h-[52px] rounded-xl px-3 flex items-center transition-all bg-[#1a1c1e] border ${!originPlace ? 'border-teal-500 ring-1 ring-teal-500/30' : 'border-white/5'}`}>
+                      <div className="flex-1 flex flex-col gap-2">
+                        {/* Origin Input */}
+                        <div className={`h-[50px] rounded-xl flex items-center gap-2 px-3 bg-gray-50 border ${!originPlace ? 'border-[#1a73e8]' : 'border-transparent'}`}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="#9aa0a6" strokeWidth="2" /><path d="m21 21-4.35-4.35" stroke="#9aa0a6" strokeWidth="2" strokeLinecap="round" /></svg>
                           <div className="flex-1 overflow-hidden">
                             <gmpx-place-picker
                               ref={originPickerRef}
-                              placeholder={originPlace === 'CURRENT_LOCATION' ? 'Your location' : 'Enter origin'}
+                              placeholder={originPlace === 'CURRENT_LOCATION' ? 'Your location' : 'Enter starting point'}
                               for-map="main-map"
                               style={{
                                 width: '100%',
                                 '--gmpx-color-surface': 'transparent',
-                                '--gmpx-color-on-surface': '#ffffff',
+                                '--gmpx-color-on-surface': '#202124',
                                 '--gmpx-border-radius': '0',
-                                '--gmpx-font-family': 'Inter, sans-serif',
-                                '--gmpx-font-size-base': '1rem',
-                                '--gmpx-placeholder-color': originPlace === 'CURRENT_LOCATION' ? '#ffffff' : '#71717a'
+                                '--gmpx-font-family': 'Google Sans, Inter, sans-serif',
+                                '--gmpx-font-size-base': '0.95rem',
+                                '--gmpx-placeholder-color': '#9aa0a6'
                               }}
                             ></gmpx-place-picker>
                           </div>
                         </div>
-                        <div className="h-[52px] rounded-xl px-3 flex items-center transition-all bg-[#1a1c1e] border border-white/5">
+                        {/* Destination Input */}
+                        <div className="h-[50px] rounded-xl flex items-center gap-2 px-3 bg-gray-50 border border-transparent">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="8" stroke="#9aa0a6" strokeWidth="2" /><path d="m21 21-4.35-4.35" stroke="#9aa0a6" strokeWidth="2" strokeLinecap="round" /></svg>
                           <div className="flex-1 overflow-hidden">
                             <gmpx-place-picker
                               ref={destinationPickerRef}
-                              placeholder="Enter destination"
+                              placeholder="Choose destination"
                               for-map="main-map"
                               style={{
                                 width: '100%',
                                 '--gmpx-color-surface': 'transparent',
-                                '--gmpx-color-on-surface': '#ffffff',
+                                '--gmpx-color-on-surface': '#202124',
                                 '--gmpx-border-radius': '0',
-                                '--gmpx-font-family': 'Inter, sans-serif',
-                                '--gmpx-font-size-base': '1rem',
-                                '--gmpx-placeholder-color': '#71717a'
+                                '--gmpx-font-family': 'Google Sans, Inter, sans-serif',
+                                '--gmpx-font-size-base': '0.95rem',
+                                '--gmpx-placeholder-color': '#9aa0a6'
                               }}
                             ></gmpx-place-picker>
                           </div>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-center pl-2">
-                        <button onClick={swapLocations} className="w-12 h-12 rounded-full flex items-center justify-center text-zinc-400 hover:text-white hover:bg-white/5 transition-all active:scale-90">
-                          <Split size={22} className="rotate-90" />
+                      {/* Swap Button */}
+                      <div className="flex items-center justify-center">
+                        <button onClick={swapLocations} className="w-10 h-10 rounded-full flex items-center justify-center text-gray-500 hover:bg-gray-100 border border-gray-200 transition-all active:scale-90">
+                          <Split size={18} className="rotate-90" />
                         </button>
                       </div>
                     </div>
                   </div>
                 ) : (
                   <>
-                    {/* Search Pill */}
-                    <div className="bg-[#3b3e44] h-14 rounded-full flex items-center px-4 mb-4 focus-within:ring-2 focus-within:ring-blue-500/50 transition-all shadow-inner border border-white/5">
-                      <GoogleMapsLogo size={24} className="mr-3 drop-shadow-sm" />
+                    {/* Search Pill - Google Maps Style */}
+                    <div className="h-14 rounded-xl flex items-center px-3 gap-3 bg-white border border-gray-200 shadow-sm mb-3 focus-within:shadow-md focus-within:border-[#1a73e8] transition-all">
+                      <GoogleMapsLogo size={22} className="shrink-0" />
                       <div className="flex-1 overflow-hidden">
                         <gmpx-place-picker
                           ref={pickerRef}
-                          placeholder="Search Google Maps"
+                          placeholder="Search here"
                           for-map="main-map"
                           style={{
                             width: '100%',
                             '--gmpx-color-surface': 'transparent',
-                            '--gmpx-color-on-surface': '#ffffff',
+                            '--gmpx-color-on-surface': '#202124',
                             '--gmpx-border-radius': '0',
-                            '--gmpx-font-family': 'Inter, sans-serif',
-                            '--gmpx-font-size-base': '1.05rem',
-                            '--gmpx-placeholder-color': '#a1a1aa'
+                            '--gmpx-font-family': 'Google Sans, Inter, sans-serif',
+                            '--gmpx-font-size-base': '1rem',
+                            '--gmpx-placeholder-color': '#9aa0a6'
                           }}
                         ></gmpx-place-picker>
                       </div>
-                      <button onClick={() => setShowDirectionsPanel(true)} className="w-[38px] h-[38px] rounded-full bg-[#1e88e5] flex items-center justify-center ml-2 text-white shrink-0 shadow-lg hover:scale-105 active:scale-95 transition-all">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L22 12l-10 10L2 12Z" /><path d="M10 16v-4h4v-4" stroke="black" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" className="opacity-40" /><polyline points="10 16 14 12 10 8" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" /></svg>
+                      <button onClick={() => setShowDirectionsPanel(true)} className="w-9 h-9 rounded-full bg-[#1a73e8] flex items-center justify-center text-white shrink-0 shadow hover:bg-[#1557b0] active:scale-95 transition-all">
+                        <Navigation size={16} fill="white" className="-rotate-45" />
                       </button>
                     </div>
                   </>
                 )}
 
-                {/* Suggestions: Contextual Rendering */}
+                {/* Your Location quick pick */}
                 {showDirectionsPanel && !originPlace && (
-                  <div className="mt-4 pt-1 border-t border-white/10 px-1">
-                    <button onClick={() => { setOriginPlace('CURRENT_LOCATION'); if (selectedPlace) fetchRoutes(selectedPlace, travelMode, 'CURRENT_LOCATION'); }} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-white/5 transition-colors text-left active:bg-white/10 group w-full">
-                      <div className="w-12 h-12 rounded-full bg-[#c2e7ff] flex items-center justify-center flex-shrink-0 text-[#001d35] group-hover:bg-[#b0d9f5] transition-all shadow-sm">
-                        <Compass size={24} strokeWidth={2.5} />
+                  <div className="px-4 pb-3 pt-1 border-t border-gray-100">
+                    <button onClick={() => { setOriginPlace('CURRENT_LOCATION'); if (selectedPlace) fetchRoutes(selectedPlace, travelMode, 'CURRENT_LOCATION'); }} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-gray-50 transition-colors text-left w-full group">
+                      <div className="w-10 h-10 rounded-full bg-[#e8f0fe] flex items-center justify-center shrink-0 text-[#1a73e8]">
+                        <Navigation size={18} fill="#1a73e8" />
                       </div>
-                      <span className="text-white font-semibold text-[15px] tracking-wide">Your location</span>
+                      <div className="flex flex-col">
+                        <span className="text-[#202124] font-semibold text-sm">Your location</span>
+                        <span className="text-[#80868b] text-xs">Use your current GPS position</span>
+                      </div>
                     </button>
                   </div>
                 )}
 
                 {!showDirectionsPanel && !isNavigating && !selectedPlace && (deviceProfile.home || deviceProfile.work) && (
-                  <div className="flex flex-col gap-1 px-1">
+                  <div className="flex flex-col border-t border-gray-100 pt-1">
                     {deviceProfile.home && (
-                      <button onClick={() => routeToSavedLoc(deviceProfile.home)} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-white/10 transition-colors text-left active:bg-white/20">
-                        <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 text-white">
-                          <Home size={22} strokeWidth={2} />
+                      <button onClick={() => routeToSavedLoc(deviceProfile.home)} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
+                        <div className="w-10 h-10 rounded-full bg-[#fce8e6] flex items-center justify-center shrink-0">
+                          <Home size={18} className="text-[#ea4335]" />
                         </div>
-                        <div className="flex flex-col flex-1 pb-1">
-                          <span className="text-white font-semibold text-lg leading-tight">Home</span>
-                          <span className="text-[#81c995] font-medium text-[13px] mt-0.5 tracking-wide">12 min • 4.2 mi</span>
+                        <div className="flex flex-col flex-1">
+                          <span className="text-[#202124] font-semibold text-sm">Home</span>
+                          <span className="text-[#80868b] text-xs">12 min · 4.2 mi</span>
                         </div>
                       </button>
                     )}
                     {deviceProfile.work && (
-                      <button onClick={() => routeToSavedLoc(deviceProfile.work)} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-white/10 transition-colors text-left active:bg-white/20">
-                        <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 text-white">
-                          <Briefcase size={22} strokeWidth={2} />
+                      <button onClick={() => routeToSavedLoc(deviceProfile.work)} className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors text-left">
+                        <div className="w-10 h-10 rounded-full bg-[#e8f0fe] flex items-center justify-center shrink-0">
+                          <Briefcase size={18} className="text-[#1a73e8]" />
                         </div>
-                        <div className="flex flex-col flex-1 pb-1">
-                          <span className="text-white font-semibold text-lg leading-tight">Work</span>
-                          <span className="text-[#fde293] font-medium text-[13px] mt-0.5 tracking-wide">28 min • 8.3 mi</span>
+                        <div className="flex flex-col flex-1">
+                          <span className="text-[#202124] font-semibold text-sm">Work</span>
+                          <span className="text-[#80868b] text-xs">28 min · 8.3 mi</span>
                         </div>
                       </button>
                     )}
@@ -982,17 +1140,15 @@ export default function App() {
               </div>
 
               {selectedPlace && !isNavigating && (
-                <div className="flex flex-col border-t border-white/5 bg-[#1a1c1e]/50">
+                <div className="flex flex-col border-t border-gray-100">
                   {/* Summary Block */}
                   {routes[selectedRouteIndex] && (
-                    <div className="p-6">
+                    <div className="px-4 py-4">
                       <div className="flex items-baseline gap-2 mb-1">
-                        <span className="text-3xl font-black text-[#81c995]">{routes[selectedRouteIndex].legs[0].duration.text}</span>
-                        <span className="text-lg font-bold text-zinc-400">({routes[selectedRouteIndex].legs[0].distance.text})</span>
+                        <span className="text-2xl font-black text-[#1a73e8]">{routes[selectedRouteIndex].legs[0].duration.text}</span>
+                        <span className="text-sm font-bold text-gray-500">({routes[selectedRouteIndex].legs[0].distance.text})</span>
                       </div>
-                      <p className="text-sm font-bold text-zinc-300 mb-6 flex items-center gap-1.5 gray-400">
-                        Fastest route, the usual traffic
-                      </p>
+                      <p className="text-xs font-semibold text-gray-400 mb-4">Fastest route, usual traffic</p>
 
                       {/* Action Buttons */}
                       <div className="flex gap-3">
@@ -1363,10 +1519,12 @@ function DeviceSettings({ show, onClose, profile, setProfile }) {
 }
 
 // --- Logos ---
+// Official Spotify logo: green circle + three white curved bars
 const SpotifyLogo = ({ size = 24 }) => (
   <div style={{ width: size, height: size }} className="flex items-center justify-center overflow-hidden shrink-0">
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 496" width="100%" height="100%">
-      <path d="M248 8C115.456 8 8 115.456 8 248s107.456 240 240 240 240-107.456 240-240S380.544 8 248 8zm110.72 346.848c-4.352 7.168-13.632 9.472-20.8 5.12-53.504-32.96-120.32-40.32-199.168-22.336-8.192 1.792-16.128-3.456-17.92-11.648-1.792-8.128 3.456-16.128 11.648-17.92 86.848-19.84 161.408-11.2 221.12 25.6 7.168 4.352 9.472 13.568 5.12 21.216zm27.424-65.248c-5.44 8.768-16.896 11.648-25.6 6.144-61.12-37.568-154.56-48.448-226.944-26.496-10.048 3.008-20.672-2.688-23.744-12.672s2.688-20.672 12.672-23.744c82.752-25.088 186.24-12.672 256.448 30.528 8.896 5.44 11.712 16.896 6.168 26.24zm2.368-68.512c-73.408-43.52-194.24-47.552-264.448-26.304-11.264 3.392-23.04-3.072-26.432-14.336s3.072-23.04 14.336-26.432c81.088-24.576 214.336-19.84 298.816 30.336 10.112 6.016 13.44 19.136 7.424 29.248-6.016 10.176-19.136 13.44-29.712 7.488z" style={{ fill: '#1db954' }} />
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 168 168" width="100%" height="100%">
+      <path fill="#1ED760" d="M84 0C37.6 0 0 37.6 0 84s37.6 84 84 84 84-37.6 84-84S130.4 0 84 0z" />
+      <path fill="#fff" d="M120.3 120.5c-1.6 2.6-5 3.4-7.6 1.8-20.8-12.7-47-15.6-77.9-8.5-3 .7-5.9-1.2-6.6-4.1-.7-3 1.2-5.9 4.1-6.6 33.8-7.7 62.8-4.4 86.2 9.8 2.6 1.6 3.4 5 1.8 7.6zm10.7-23.8c-2 3.2-6.2 4.2-9.4 2.2-23.9-14.7-60.3-18.9-88.5-10.4-3.7 1.1-7.5-1-8.6-4.6-1.1-3.7 1-7.5 4.6-8.6 32.3-9.8 72.4-5 99.8 11.8 3.2 2 4.2 6.2 2.1 9.6zm.9-25c-28.6-17-75.7-18.6-103-10.3-4.4 1.3-9-1.2-10.3-5.5-1.3-4.4 1.2-9 5.5-10.3 31.3-9.5 83.3-7.7 116.1 11.9 4 2.4 5.3 7.5 2.9 11.5-2.3 3.9-7.4 5.2-11.2 2.7z" />
     </svg>
   </div>
 );
