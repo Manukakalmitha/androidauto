@@ -12,7 +12,7 @@ export default defineConfig({
     }),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg', 'spotify-logo.png'],
+      includeAssets: ['spotify-logo.png'],
       manifest: {
         name: 'Android Auto Dashboard',
         short_name: 'Dashboard',

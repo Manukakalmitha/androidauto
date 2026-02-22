@@ -1,0 +1,24 @@
+{
+    "packageName": "com.manuk.androidauto",
+    "name": "Android Auto Dashboard",
+    "shortName": "Dashboard",
+    "startUrl": "/",
+    "display": "standalone",
+    "orientation": "landscape",
+    "statusBarStyle": "black-translucent",
+    "themeColor": "#000000",
+    "navigationColor": "#000000",
+    "navigationColorDark": "#000000",
+    "navigationDividerColor": "#000000",
+    "navigationDividerColorDark": "#000000",
+    "backgroundColor": "#000000",
+    "enableNotifications": true,
+    "shortcuts": [],
+    "webManifestUrl": "https://your-domain.com/manifest.webmanifest",
+    "appVersionCode": 1,
+    "appVersionName": "1.0.0",
+    "generatorApp": "bubblewrap-cli",
+    "android": {
+        "arch": "v8a"
+    }
+}
