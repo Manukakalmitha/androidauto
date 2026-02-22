@@ -28,7 +28,9 @@ import {
   Repeat,
   Heart,
   User,
-  Settings
+  Settings,
+  Home,
+  Briefcase
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SpotifyWebApi from 'spotify-web-api-js';
@@ -485,8 +487,9 @@ export default function App() {
         suppressMarkers: true,
         polylineOptions: {
           strokeColor: '#3b82f6',
-          strokeWeight: 8,
-          strokeOpacity: 0.8
+          strokeWeight: 14,
+          strokeOpacity: 0.9,
+          zIndex: 50
         }
       });
     }
@@ -523,6 +526,13 @@ export default function App() {
     setIsNavigating(true);
     setActiveStepIndex(0);
     if (infoWindowRef.current) infoWindowRef.current.close();
+
+    // MD3 Automotive Navigation Camera behavior
+    if (mapRef.current) {
+      mapRef.current.tilt = 60;
+      mapRef.current.heading = 0;
+      mapRef.current.zoom = 19;
+    }
   };
 
   // --- Voice Navigation ---
@@ -570,36 +580,42 @@ export default function App() {
       <APILoader apiKey={GOOGLE_MAPS_API_KEY} solutionChannel="GMP_GE_mapsandplacesautocomplete_v2" />
 
       {/* Left Vertical Navigation Bar */}
-      <nav className="w-24 bg-[#0a0a0a] border-r border-white/5 flex flex-col justify-between items-center py-10 z-[100] shadow-[15px_0_30px_rgba(0,0,0,0.4)]">
-        <div className="flex flex-col gap-10 items-center">
-          <button onClick={() => setShowAppDrawer(!showAppDrawer)} className={`w-16 h-16 flex items-center justify-center rounded-3xl transition-all ${showAppDrawer ? 'bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)]' : 'bg-zinc-900 text-white/40 hover:text-white'}`}>
-            <LayoutGrid size={32} />
-          </button>
+      <nav className="w-[100px] bg-black flex flex-col justify-between items-center py-6 z-[100] border-r border-[#1e1e1e]">
 
-          <div className="flex flex-col gap-10 mt-6">
-            {[
-              { id: 'maps', icon: <Navigation size={34} />, color: 'text-blue-500' },
-              { id: 'spotify', icon: <Music2 size={34} />, color: 'text-green-500' },
-              { id: 'phone', icon: <Phone size={34} />, color: 'text-zinc-600' }
-            ].map((app) => (
-              <button
-                key={app.id}
-                onClick={() => { setActiveTab(app.id); setShowAppDrawer(false); }}
-                className={`transition-all duration-300 ${activeTab === app.id ? app.color + ' scale-110 drop-shadow-[0_0_15px_rgba(34,197,94,0.3)]' : 'text-zinc-800 hover:text-zinc-400'}`}
-              >
-                {app.icon}
-              </button>
-            ))}
+        {/* Top: Status & Clock */}
+        <div className="flex flex-col items-center gap-1 mb-4">
+          <div className="flex items-center gap-1 opacity-90 text-white">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M21 3L3 21h18V3z" /></svg>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z" /></svg>
           </div>
+          <span className="text-[18px] font-bold text-white tracking-wide">{time.getHours() % 12 || 12}:{time.getMinutes().toString().padStart(2, '0')}</span>
         </div>
 
-        <div className="flex flex-col gap-10 items-center">
-          <button onClick={() => setShowSettings(!showSettings)} className={`w-16 h-16 flex items-center justify-center rounded-full transition-all active:scale-90 ${showSettings ? 'bg-purple-600 text-white shadow-lg' : 'bg-zinc-900 text-zinc-600 hover:text-white'}`}><User size={32} /></button>
-          <button className="w-16 h-16 flex items-center justify-center rounded-full bg-zinc-900 text-zinc-600 hover:text-white transition-all active:scale-90"><Mic size={32} /></button>
-          <div className="flex flex-col items-center gap-1 opacity-40">
-            <span className="text-[10px] font-black text-white tracking-widest">{formattedTime.split(' ')[0]}</span>
-            <div className="w-4 h-0.5 bg-white/20 rounded-full" />
-          </div>
+        {/* Middle: Stacked App Icons */}
+        <div className="flex flex-col items-center gap-6 my-auto">
+          {[
+            { id: 'maps', icon: <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Google_Maps_icon_%282020%29.svg/1024px-Google_Maps_icon_%282020%29.svg.png" className="w-[42px] h-[42px] object-contain drop-shadow-md" alt="Maps" /> },
+            { id: 'spotify', icon: <div className="bg-[#1DB954] rounded-full w-[46px] h-[46px] shadow-md flex items-center justify-center"><Music2 size={24} className="text-black" /></div> },
+            { id: 'phone', icon: <div className="bg-white rounded-full w-[46px] h-[46px] shadow-md flex items-center justify-center"><Phone size={24} className="text-blue-500 fill-current" /></div> },
+          ].map((app) => (
+            <button
+              key={app.id}
+              onClick={() => { setActiveTab(app.id); setShowAppDrawer(false); }}
+              className={`transition-transform duration-300 relative rounded-full flex items-center justify-center active:scale-95 ${activeTab === app.id ? 'scale-110 drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]' : 'opacity-80 hover:opacity-100'}`}
+            >
+              {app.icon}
+            </button>
+          ))}
+        </div>
+
+        {/* Bottom: Mic and App Grid */}
+        <div className="flex flex-col gap-6 items-center mt-4 pt-4 border-t border-[#1e1e1e] w-[60%]">
+          <button onClick={() => setShowSettings(!showSettings)} className="w-14 h-14 flex items-center justify-center rounded-full text-white hover:bg-white/10 transition-colors active:scale-95">
+            <Mic size={28} />
+          </button>
+          <button onClick={() => setShowAppDrawer(!showAppDrawer)} className="w-14 h-14 flex items-center justify-center rounded-3xl text-white hover:bg-white/10 transition-colors active:scale-95">
+            <LayoutGrid size={28} />
+          </button>
         </div>
       </nav>
 
@@ -617,47 +633,67 @@ export default function App() {
             <gmp-advanced-marker ref={markerRef}></gmp-advanced-marker>
           </gmp-map>
 
-          {/* Floating Map Search/Directions Card (Left/Driver side alignment) */}
-          <div className="absolute top-6 left-6 w-[400px] max-h-[calc(100%-48px)] pointer-events-none flex flex-col gap-3 z-50">
-            <div className="bg-[#1e1e1e]/95 backdrop-blur-xl rounded-2xl shadow-xl pointer-events-auto overflow-hidden flex flex-col border border-white/5">
-              <div className="flex justify-between items-center mb-6 px-6 pt-6">
-                <div className="flex items-center gap-4 bg-white/5 p-3 rounded-2xl border border-white/5 focus-within:border-blue-500/50 transition-all w-full">
-                  <Navigation size={28} className="text-blue-500 ml-2" />
-                  <div className="flex-1">
+          {/* Floating Map Search/Directions Card */}
+          <div className="absolute top-6 left-6 w-[360px] max-h-[calc(100%-48px)] pointer-events-none flex flex-col gap-3 z-50">
+            <div className="bg-[#2a2d32]/95 backdrop-blur-3xl rounded-[28px] shadow-2xl pointer-events-auto overflow-hidden flex flex-col border border-white/10">
+
+              <div className="p-4 flex flex-col">
+                {/* Search Pill */}
+                <div className="bg-[#3b3e44] h-14 rounded-full flex items-center px-4 mb-4 focus-within:ring-2 focus-within:ring-blue-500/50 transition-all shadow-inner">
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/a9/Google_Maps_icon_%282020%29.svg/1024px-Google_Maps_icon_%282020%29.svg.png" className="w-6 h-6 mr-3 drop-shadow-sm" alt="Maps" />
+                  <div className="flex-1 overflow-hidden">
                     <gmpx-place-picker
                       ref={pickerRef}
-                      placeholder="Where to?"
+                      placeholder="Search"
                       for-map="main-map"
                       style={{
                         width: '100%',
                         '--gmpx-color-surface': 'transparent',
                         '--gmpx-color-on-surface': '#ffffff',
                         '--gmpx-border-radius': '0',
-                        '--gmpx-font-family': 'Inter, sans-serif'
+                        '--gmpx-font-family': 'Inter, sans-serif',
+                        '--gmpx-font-size-base': '1.05rem',
+                        '--gmpx-placeholder-color': '#a1a1aa'
                       }}
                     ></gmpx-place-picker>
                   </div>
+                  <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center ml-2 text-white/80 shrink-0">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>
+                  </div>
                 </div>
 
+                {/* Suggestions: Home & Work */}
                 {!isNavigating && !selectedPlace && (deviceProfile.home || deviceProfile.work) && (
-                  <div className="flex gap-4">
+                  <div className="flex flex-col gap-1 px-1">
                     {deviceProfile.home && (
-                      <button onClick={() => routeToSavedLoc(deviceProfile.home)} className="flex-1 py-4 bg-white/5 hover:bg-white/10 text-white rounded-xl flex flex-col items-center justify-center gap-1 border border-white/5 transition-all shadow-sm">
-                        <MapPin size={24} className="text-blue-500" />
-                        <span className="text-xs font-bold">Home</span>
+                      <button onClick={() => routeToSavedLoc(deviceProfile.home)} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-white/10 transition-colors text-left active:bg-white/20">
+                        <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 text-white">
+                          <Home size={22} strokeWidth={2} />
+                        </div>
+                        <div className="flex flex-col flex-1 pb-1">
+                          <span className="text-white font-semibold text-lg leading-tight">Home</span>
+                          <span className="text-[#81c995] font-medium text-[13px] mt-0.5 tracking-wide">12 min • 4.2 mi</span>
+                        </div>
                       </button>
                     )}
                     {deviceProfile.work && (
-                      <button onClick={() => routeToSavedLoc(deviceProfile.work)} className="flex-1 py-4 bg-white/5 hover:bg-white/10 text-white rounded-xl flex flex-col items-center justify-center gap-1 border border-white/5 transition-all shadow-sm">
-                        <MapPin size={24} className="text-orange-500" />
-                        <span className="text-xs font-bold">Work</span>
+                      <button onClick={() => routeToSavedLoc(deviceProfile.work)} className="flex items-center gap-4 p-3 rounded-2xl hover:bg-white/10 transition-colors text-left active:bg-white/20">
+                        <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center flex-shrink-0 text-white">
+                          <Briefcase size={22} strokeWidth={2} />
+                        </div>
+                        <div className="flex flex-col flex-1 pb-1">
+                          <span className="text-white font-semibold text-lg leading-tight">Work</span>
+                          <span className="text-[#fde293] font-medium text-[13px] mt-0.5 tracking-wide">28 min • 8.3 mi</span>
+                        </div>
                       </button>
                     )}
                   </div>
                 )}
+              </div>
 
-                {!isNavigating && selectedPlace && (
-                  <div className="flex gap-2">
+              {!isNavigating && selectedPlace && (
+                <div className="flex flex-col">
+                  <div className="flex gap-2 px-6 pb-6 mt-2">
                     {[
                       { id: 'DRIVING', icon: <Car size={20} /> },
                       { id: 'BICYCLING', icon: <Bike size={20} /> },
@@ -673,8 +709,8 @@ export default function App() {
                       </button>
                     ))}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
 
               {selectedPlace && (
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-8 max-h-[450px]">
@@ -730,22 +766,24 @@ export default function App() {
               )}
             </div>
           </div>
+
+          {/* Map Controls */}
+          <div className="absolute right-6 bottom-6 flex flex-col gap-4 z-50">
+            <div className="bg-[#2a2d32]/95 backdrop-blur-3xl p-2 rounded-full border border-white/10 flex flex-col items-center shadow-xl">
+              <button className="w-12 h-12 flex items-center justify-center text-zinc-400 hover:text-white transition-all text-2xl active:bg-white/10 rounded-full" onClick={() => mapRef.current.innerMap.setZoom(mapRef.current.innerMap.getZoom() + 1)}>+</button>
+              <div className="w-8 h-[1px] bg-white/10 my-1" />
+              <button className="w-12 h-12 flex items-center justify-center text-zinc-400 hover:text-white transition-all text-2xl active:bg-white/10 rounded-full" onClick={() => mapRef.current.innerMap.setZoom(mapRef.current.innerMap.getZoom() - 1)}>−</button>
+            </div>
+            <button
+              onClick={() => { if (currentCoords) mapRef.current.center = { lat: currentCoords.latitude, lng: currentCoords.longitude }; }}
+              className="w-16 h-16 bg-[#2a2d32]/95 backdrop-blur-3xl border border-white/10 text-white rounded-full flex items-center justify-center shadow-xl active:scale-95 transition-all group"
+            >
+              <Navigation size={24} strokeWidth={2.5} className="rotate-45" />
+            </button>
+          </div>
+
         </div>
 
-        {/* Map Controls */}
-        <div className="absolute right-6 bottom-6 flex flex-col gap-4 z-50">
-          <div className="bg-[#1e1e1e]/90 backdrop-blur-md p-2 rounded-2xl border border-white/10 flex flex-col items-center shadow-lg">
-            <button className="w-12 h-12 flex items-center justify-center text-zinc-400 hover:text-white transition-all text-2xl active:bg-white/5 rounded-xl" onClick={() => mapRef.current.innerMap.setZoom(mapRef.current.innerMap.getZoom() + 1)}>+</button>
-            <div className="w-8 h-[1px] bg-white/10 my-1" />
-            <button className="w-12 h-12 flex items-center justify-center text-zinc-400 hover:text-white transition-all text-2xl active:bg-white/5 rounded-xl" onClick={() => mapRef.current.innerMap.setZoom(mapRef.current.innerMap.getZoom() - 1)}>−</button>
-          </div>
-          <button
-            onClick={() => { if (currentCoords) mapRef.current.center = { lat: currentCoords.latitude, lng: currentCoords.longitude }; }}
-            className="w-16 h-16 bg-[#1e1e1e] border border-white/10 text-white rounded-2xl flex items-center justify-center shadow-lg active:scale-95 transition-all group"
-          >
-            <Navigation size={24} strokeWidth={2.5} className="rotate-45" />
-          </button>
-        </div>
         {/* Media Player Section (Secondary 30% Panel) */}
         <div className="w-[30%] min-w-[320px] rounded-2xl overflow-hidden bg-[#1e1e1e] relative flex flex-col shadow-md transition-all duration-700">
 
@@ -907,13 +945,12 @@ export default function App() {
               </div>
 
             </div>
-          )
-          }
-        </div >
-      </main >
+          )}
+        </div>
+      </main>
 
       {/* App Drawer Overlay */}
-      < AnimatePresence >
+      <AnimatePresence>
         {showAppDrawer && (
           <motion.div
             initial={{ opacity: 0 }}
