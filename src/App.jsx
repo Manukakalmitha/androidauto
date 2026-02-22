@@ -31,7 +31,10 @@ import {
   Settings,
   Home,
   Briefcase,
-  CornerDownRight
+  CornerDownRight,
+  Leaf,
+  ArrowUp,
+  Split
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import SpotifyWebApi from 'spotify-web-api-js';
@@ -216,6 +219,31 @@ export default function App() {
       });
     };
   }, []);
+
+  // --- Dynamic Map Camera Follow ---
+  useEffect(() => {
+    if (isNavigating && currentCoords && mapRef.current) {
+      const { latitude, longitude, heading } = currentCoords;
+      const center = { lat: latitude, lng: longitude };
+
+      // Update map center to user's location
+      mapRef.current.center = center;
+
+      // Update marker position
+      if (markerRef.current) {
+        markerRef.current.position = center;
+      }
+
+      // If we have heading data from GPS, rotate the map to follow
+      if (heading !== null && heading !== undefined) {
+        mapRef.current.heading = heading;
+      }
+
+      // Standardize tilt/zoom for driving perspective
+      mapRef.current.tilt = 65;
+      if (mapRef.current.zoom < 17) mapRef.current.zoom = 18;
+    }
+  }, [isNavigating, currentCoords]);
 
   // --- Spotify Functions ---
   const loginToSpotify = async () => {
@@ -714,79 +742,78 @@ export default function App() {
             <gmp-advanced-marker ref={markerRef}></gmp-advanced-marker>
           </gmp-map>
 
-          {/* Active Navigation: Maneuver Card (Official Green) */}
+          {/* Active Navigation: Maneuver Bar (Official Horizontal Style) */}
           {isNavigating && navigationSteps.length > 0 && (
-            <div className="absolute top-6 left-6 w-[360px] z-50 pointer-events-auto overflow-hidden animate-in fade-in slide-in-from-left-4 duration-500">
-              <div className="bg-[#00703c] rounded-[28px] shadow-2xl overflow-hidden flex flex-col">
-                {/* Primary Maneuver */}
-                <div className="p-6 flex items-start gap-6">
-                  <div className="w-20 h-20 bg-white/10 rounded-3xl flex items-center justify-center text-white shrink-0">
-                    <Navigation size={48} fill="currentColor" className="rotate-[-45deg]" />
+            <div className="absolute top-0 left-0 right-0 z-[100] px-6 py-6 flex justify-center pointer-events-none animate-in slide-in-from-top duration-700">
+              <div className="flex flex-col items-start gap-2 max-w-[800px] w-full pointer-events-auto">
+                {/* Primary Maneuver Bar */}
+                <div className="bg-[#00703b] rounded-[28px] shadow-2xl flex items-center px-8 py-5 gap-8 w-full border border-white/5">
+                  <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center text-white shrink-0">
+                    <ArrowUp size={44} strokeWidth={3} />
                   </div>
-                  <div className="flex-1 flex flex-col justify-center min-w-0 h-20">
-                    <span className="text-[28px] font-bold text-white leading-tight truncate" dangerouslySetInnerHTML={{ __html: navigationSteps[activeStepIndex]?.instructions }} />
-                    <span className="text-[22px] font-medium text-white/80 mt-1">{navigationSteps[activeStepIndex]?.distance.text}</span>
+                  <div className="flex flex-col justify-center min-w-0">
+                    <div className="flex items-center gap-3">
+                      <span className="text-[32px] font-black text-white leading-tight">towards</span>
+                      <span className="text-[32px] font-bold text-white leading-tight truncate" dangerouslySetInnerHTML={{ __html: navigationSteps[activeStepIndex]?.instructions }} />
+                    </div>
+                    <span className="text-[24px] font-medium text-white/70 mt-0.5">{navigationSteps[activeStepIndex]?.distance.text}</span>
                   </div>
                 </div>
 
-                {/* Secondary/Then Maneuver */}
+                {/* "Then" Mini Card (Badge Style) */}
                 {navigationSteps[activeStepIndex + 1] && (
-                  <div className="bg-black/20 px-8 py-4 flex items-center gap-5 border-t border-white/5">
-                    <div className="flex flex-col flex-1">
-                      <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] mb-1">Then</span>
-                      <div className="flex items-center gap-3">
-                        <CornerDownRight size={22} className="text-white/60" />
-                        <span className="text-xl font-bold text-white/90 truncate" dangerouslySetInnerHTML={{ __html: navigationSteps[activeStepIndex + 1]?.instructions }} />
-                      </div>
-                    </div>
+                  <div className="bg-[#004d2c]/90 backdrop-blur-md rounded-2xl px-6 py-3 flex items-center gap-4 text-white shadow-xl border border-white/5 translate-x-2">
+                    <span className="text-[10px] font-black text-white/50 uppercase tracking-[0.2em]">Then</span>
+                    <CornerDownRight size={20} className="text-white/80" />
+                    <span className="text-lg font-bold truncate max-w-[300px]" dangerouslySetInnerHTML={{ __html: navigationSteps[activeStepIndex + 1]?.instructions }} />
                   </div>
                 )}
-
-                {/* Simulation Controls */}
-                <div className="p-4 flex gap-2">
-                  <button onClick={() => setActiveStepIndex(p => Math.min(p + 1, navigationSteps.length - 1))} className="flex-1 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold text-sm transition-all active:scale-95 italic">Simulate Next Turn</button>
-                  <button onClick={endNavigation} className="w-14 h-12 bg-red-500/80 hover:bg-red-500 rounded-xl flex items-center justify-center text-white transition-all active:scale-95 shadow-lg"><X size={24} strokeWidth={3} /></button>
-                </div>
               </div>
             </div>
           )}
 
-          {/* Speedometer (Bottom Left) */}
+          {/* Speedometer (Bottom Left Circular Gauge - Official Style) */}
           {isNavigating && (
-            <div className="absolute bottom-10 left-10 z-[60] pointer-events-none animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <div className="bg-white/95 backdrop-blur-xl w-24 h-24 rounded-full shadow-2xl flex flex-col items-center justify-center border-4 border-zinc-200/50">
+            <div className="absolute bottom-10 left-10 z-[110] pointer-events-none animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <div className="bg-white rounded-full w-24 h-24 shadow-[0_12px_48px_-12px_rgba(0,0,0,0.5)] flex flex-col items-center justify-center border-4 border-zinc-100 ring-4 ring-black/5">
                 <span className="text-4xl font-black text-black leading-none">{currentSpeed}</span>
-                <span className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mt-1">km/h</span>
+                <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mt-1">km/h</span>
               </div>
             </div>
           )}
 
-          {/* Active Navigation: ETA Pill (Bottom) */}
+          {/* Active Navigation: Feature-Rich ETA Pill (Bottom Centered White Pill) */}
           {isNavigating && routes[selectedRouteIndex] && (
-            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
-              <div className="bg-[#1a1c1e]/95 backdrop-blur-3xl rounded-full px-8 py-4 border border-white/10 shadow-2xl flex items-center gap-6 overflow-hidden min-w-[320px] justify-center">
-                <div className="flex flex-col items-center">
-                  <span className="text-[24px] font-black text-green-500 leading-none">
-                    {(() => {
-                      const now = new Date();
-                      const durationSec = routes[selectedRouteIndex].legs[0].duration.value;
-                      now.setSeconds(now.getSeconds() + durationSec);
-                      return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                    })()}
-                  </span>
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-1.5 leading-none flex items-center gap-1">
-                    Arrival <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" />
-                  </span>
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[100] pointer-events-auto animate-in slide-in-from-bottom duration-700">
+              <div className="bg-white rounded-full shadow-[0_24px_64px_-16px_rgba(0,0,0,0.5)] flex items-center p-2.5 min-w-[500px] gap-2 ring-1 ring-black/5">
+                <button onClick={endNavigation} className="w-14 h-14 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center text-zinc-800 transition-all active:scale-90 shadow-sm">
+                  <X size={28} strokeWidth={2.5} />
+                </button>
+                <div className="flex-1 flex items-center justify-center gap-8 py-2 px-8">
+                  <div className="flex flex-col items-center">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[28px] font-black text-[#1a7344] leading-none">{routes[selectedRouteIndex].legs[0].duration.text}</span>
+                      <Leaf size={20} fill="#1a7344" className="text-[#1a7344]" />
+                    </div>
+                    <div className="flex items-center gap-3 mt-1.5 text-zinc-500">
+                      <span className="text-xs font-bold uppercase tracking-widest">{routes[selectedRouteIndex].legs[0].distance.text}</span>
+                      <div className="w-1 h-1 rounded-full bg-zinc-300" />
+                      <span className="text-xs font-bold uppercase tracking-widest">
+                        {(() => {
+                          const now = new Date();
+                          const durationSec = routes[selectedRouteIndex].legs[0].duration.value;
+                          now.setSeconds(now.getSeconds() + durationSec);
+                          return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                        })()}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-                <div className="w-[1px] h-10 bg-white/10 self-center mx-2"></div>
-                <div className="flex flex-col items-center">
-                  <span className="text-[24px] font-black text-white leading-none">{routes[selectedRouteIndex].legs[0].duration.text}</span>
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-1.5 leading-none">Travel Time</span>
-                </div>
-                <div className="w-[1px] h-10 bg-white/10 self-center mx-2"></div>
-                <div className="flex flex-col items-center">
-                  <span className="text-[24px] font-black text-white leading-none">{routes[selectedRouteIndex].legs[0].distance.text}</span>
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-1.5 leading-none">Remaining</span>
+                <div className="flex items-center gap-2 pr-2">
+                  <button className="w-14 h-14 rounded-full bg-zinc-50 hover:bg-zinc-100 flex items-center justify-center text-zinc-600 transition-all active:scale-95 border border-zinc-100">
+                    <Split size={24} />
+                  </button>
+                  <button onClick={() => setActiveStepIndex(p => Math.min(p + 1, navigationSteps.length - 1))} className="w-14 h-14 rounded-full bg-zinc-100 hover:bg-zinc-200 flex items-center justify-center text-zinc-500 transition-all active:scale-95 italic font-black text-xs shadow-sm">SIM</button>
                 </div>
               </div>
             </div>
