@@ -488,7 +488,7 @@ export default function App() {
 
     // Define the ready callback BEFORE loading the script
     window.onSpotifyWebPlaybackSDKReady = () => {
-      // Small delay to ensure the script's internal modules (like playback-sdk) are fully linked
+      // Longer delay ensures script's internal modules (DRM/EME, playback-sdk) are fully wired
       setTimeout(() => {
         console.log("Spotify SDK: Web Playback SDK Ready callback (hardened)");
         if (!window.Spotify || !window.Spotify.Player) return;
@@ -506,7 +506,7 @@ export default function App() {
           volume: 0.5
         });
 
-        player.addListener('initial_state_error', ({ message }) => { console.error("Initial State Error:", message); });
+        player.addListener('initialization_error', ({ message }) => { console.error("Init Error:", message); });
         player.addListener('authentication_error', ({ message }) => { console.error("Auth Error:", message); });
         player.addListener('account_error', ({ message }) => { console.error("Account Error:", message); });
         player.addListener('playback_error', ({ message }) => { console.error("Playback Error:", message); });
@@ -529,9 +529,18 @@ export default function App() {
 
         player.connect();
         setSpotifyPlayer(player);
-      }, 500);
+      }, 1200); // Longer delay so DRM/EME init finishes first
     };
 
+    // Inject a guard BEFORE the SDK script runs so indexOf is never called on undefined
+    if (!window.__spotifySDKGuarded) {
+      window.__spotifySDKGuarded = true;
+      const _origIndexOf = String.prototype.indexOf;
+      String.prototype.indexOf = function (...args) {
+        if (this == null) return -1;
+        return _origIndexOf.apply(this, args);
+      };
+    }
 
     // Load script only if not present
     if (!document.getElementById('spotify-player-sdk')) {
@@ -546,7 +555,7 @@ export default function App() {
     }
 
     return () => {
-      // Persistent player strategy
+      // Persistent player strategy — keep player alive across re-renders
     };
   }, [spotifyToken, spotifyPlayer]);
 
@@ -569,24 +578,26 @@ export default function App() {
         setPlaylists(data.items);
       }).catch(err => console.error("Error fetching playlists:", err));
 
-      // Fetch Queue for "Up Next" (Manual fetch because library method is missing)
+      // Fetch Queue for "Up Next"
       const fetchQueue = async () => {
         try {
           const response = await fetch('https://api.spotify.com/v1/me/player/queue', {
             headers: { 'Authorization': `Bearer ${tokenRef.current || spotifyToken}` }
           });
-          if (response.ok) {
+          if (response.ok && response.headers.get('content-type')?.includes('application/json')) {
             const data = await response.json();
-            if (data?.queue?.[0]) {
-              setUpNext(data.queue[0]);
+            if (data?.queue?.length > 0) {
+              setUpNext(data.queue);
+            } else {
+              setUpNext(null);
             }
           }
         } catch (err) {
-          console.error("Error fetching queue manually:", err);
+          // Silently ignore queue fetch failures
         }
       };
       fetchQueue();
-      const qInterval = setInterval(fetchQueue, 15000);
+      const qInterval = setInterval(fetchQueue, 20000);
       return () => clearInterval(qInterval);
     }
   }, [spotifyToken, playbackState?.item?.id]);
@@ -1401,14 +1412,14 @@ export default function App() {
                           </div>
 
                           {/* Up Next */}
-                          {upNext?.item && (
+                          {upNext && upNext[0] && (
                             <div className="flex items-center gap-3 bg-black/30 rounded-xl px-3 py-2.5 backdrop-blur-sm">
                               <div className="w-8 h-8 rounded-md overflow-hidden shrink-0">
-                                <img src={upNext.item.album?.images?.[0]?.url} alt="" className="w-full h-full object-cover" />
+                                <img src={upNext[0].album?.images?.[0]?.url} alt="" className="w-full h-full object-cover" />
                               </div>
                               <div className="flex-1 min-w-0">
                                 <p className="text-[10px] text-white/40 uppercase tracking-widest font-bold">Up Next</p>
-                                <p className="text-xs text-white/80 font-semibold truncate">{upNext.item.name}</p>
+                                <p className="text-xs text-white/80 font-semibold truncate">{upNext[0].name}</p>
                               </div>
                             </div>
                           )}
