@@ -688,8 +688,71 @@ export default function App() {
             <gmp-advanced-marker ref={markerRef}></gmp-advanced-marker>
           </gmp-map>
 
+          {/* Active Navigation: Maneuver Card (Official Green) */}
+          {isNavigating && navigationSteps.length > 0 && (
+            <div className="absolute top-6 left-6 w-[360px] z-50 pointer-events-auto overflow-hidden animate-in fade-in slide-in-from-left-4 duration-500">
+              <div className="bg-[#00703c] rounded-[28px] shadow-2xl overflow-hidden flex flex-col">
+                {/* Primary Maneuver */}
+                <div className="p-6 flex items-start gap-6">
+                  <div className="w-20 h-20 bg-white/10 rounded-3xl flex items-center justify-center text-white shrink-0">
+                    {/* Dynamic Icon based on step could go here, using Navigation currently */}
+                    <Navigation size={48} fill="currentColor" className="rotate-[-45deg]" />
+                  </div>
+                  <div className="flex-1 flex flex-col justify-center min-w-0 h-20">
+                    <span className="text-[28px] font-bold text-white leading-tight truncate" dangerouslySetInnerHTML={{ __html: navigationSteps[activeStepIndex]?.instructions }} />
+                    <span className="text-[22px] font-medium text-white/80 mt-1">{navigationSteps[activeStepIndex]?.distance.text}</span>
+                  </div>
+                </div>
+
+                {/* Secondary/Then Maneuver */}
+                {navigationSteps[activeStepIndex + 1] && (
+                  <div className="bg-black/10 px-8 py-3 flex items-center gap-4">
+                    <span className="text-sm font-black text-white/40 uppercase tracking-widest">Then</span>
+                    <span className="text-lg font-bold text-white/90 truncate" dangerouslySetInnerHTML={{ __html: navigationSteps[activeStepIndex + 1]?.instructions }} />
+                  </div>
+                )}
+
+                {/* Simulation Controls (Floating over card) */}
+                <div className="p-4 flex gap-2">
+                  <button onClick={() => setActiveStepIndex(p => Math.min(p + 1, navigationSteps.length - 1))} className="flex-1 py-3 bg-white/10 hover:bg-white/20 rounded-xl text-white font-bold text-sm transition-all active:scale-95 italic">Simulate Next Turn</button>
+                  <button onClick={endNavigation} className="w-14 h-12 bg-red-500/80 hover:bg-red-500 rounded-xl flex items-center justify-center text-white transition-all active:scale-95 shadow-lg"><X size={24} strokeWidth={3} /></button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Active Navigation: ETA Pill (Bottom) */}
+          {isNavigating && routes[selectedRouteIndex] && (
+            <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 pointer-events-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="bg-[#1a1c1e]/95 backdrop-blur-3xl rounded-full px-8 py-4 border border-white/10 shadow-2xl flex items-center gap-6 overflow-hidden min-w-[320px] justify-center">
+                <div className="flex flex-col items-center">
+                  <span className="text-[22px] font-black text-green-500 leading-none">{routes[selectedRouteIndex].legs[0].duration.text}</span>
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-1">Travel Time</span>
+                </div>
+                <div className="w-[1px] h-8 bg-white/10 self-center"></div>
+                <div className="flex flex-col items-center">
+                  <span className="text-[22px] font-black text-white leading-none">{routes[selectedRouteIndex].legs[0].distance.text}</span>
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-1">Remaining</span>
+                </div>
+                <div className="w-[1px] h-8 bg-white/10 self-center"></div>
+                <div className="flex flex-col items-center">
+                  <span className="text-[22px] font-black text-white leading-none">
+                    {/* Calculate ETA based on duration */}
+                    {(() => {
+                      const now = new Date();
+                      const durationSec = routes[selectedRouteIndex].legs[0].duration.value;
+                      now.setSeconds(now.getSeconds() + durationSec);
+                      return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    })()}
+                  </span>
+                  <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-[0.2em] mt-1">Arrival</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Floating Map Search/Directions Card */}
-          <div className="absolute top-6 left-6 w-[360px] max-h-[calc(100%-48px)] pointer-events-none flex flex-col gap-3 z-50">
+          <div className={`absolute top-6 left-6 w-[360px] max-h-[calc(100%-48px)] flex flex-col gap-3 transition-all duration-500 ${isNavigating ? 'opacity-0 pointer-events-none -translate-x-10' : 'z-50 pointer-events-none opacity-100'}`}>
             <div className="bg-[#2a2d32]/95 backdrop-blur-3xl rounded-[28px] shadow-2xl pointer-events-auto overflow-hidden flex flex-col border border-white/10">
 
               <div className="p-4 flex flex-col">
@@ -857,56 +920,23 @@ export default function App() {
                 </div>
               )}
 
-              {selectedPlace && (
+              {selectedPlace && !isNavigating && (
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-8 max-h-[450px]">
-                  {isNavigating ? (
-                    <div className="flex flex-col gap-8">
-                      <div className="flex items-center gap-5">
-                        <div className="w-14 h-14 bg-blue-600/20 rounded-2xl flex items-center justify-center text-blue-500 shadow-inner">
-                          <Navigation size={28} />
+                  <div className="flex flex-col gap-4">
+                    {routes.map((route, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => selectRoute(idx)}
+                        className={`p-6 rounded-3xl border text-left transition-all ${selectedRouteIndex === idx ? 'border-blue-500 bg-blue-500/10' : 'border-white/5 bg-white/5 hover:bg-white/10'}`}
+                      >
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-2xl font-black text-white">{route.legs[0].duration.text}</span>
+                          <span className="text-[11px] font-black text-green-500 uppercase tracking-widest">{route.legs[0].distance.text}</span>
                         </div>
-                        <div className="min-w-0">
-                          <p className="text-[11px] font-black text-blue-500 uppercase tracking-[0.2em] leading-none mb-2">Engaged</p>
-                          <p className="text-xl font-black text-white tracking-tight truncate">{selectedPlace.displayName || selectedPlace.name}</p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-4">
-                        {navigationSteps.slice(activeStepIndex, activeStepIndex + 3).map((step, idx) => (
-                          <div key={idx} className={`flex gap-5 p-5 rounded-3xl border transition-all ${idx === 0 ? 'bg-blue-500/10 border-blue-500/50 shadow-[0_0_30px_rgba(59,130,246,0.15)]' : 'bg-white/5 border-white/5 opacity-60'}`}>
-                            <div className="text-blue-500 font-black text-xs pt-1 opacity-50">{activeStepIndex + idx + 1}</div>
-                            <div className="flex flex-col gap-1.5 min-w-0">
-                              <p className="text-base font-bold text-white/90 leading-snug" dangerouslySetInnerHTML={{ __html: step.instructions }} />
-                              <span className="text-[11px] font-black text-zinc-500 uppercase tracking-widest">{step.distance.text}</span>
-                            </div>
-                          </div>
-                        ))}
-                        {activeStepIndex < navigationSteps.length - 1 && (
-                          <button
-                            onClick={() => setActiveStepIndex(prev => prev + 1)}
-                            className="mt-2 py-3 bg-white/10 hover:bg-white/20 text-white font-bold rounded-xl text-sm transition-colors text-center"
-                          >
-                            Simulate Next Turn
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-4">
-                      {routes.map((route, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => selectRoute(idx)}
-                          className={`p-6 rounded-3xl border text-left transition-all ${selectedRouteIndex === idx ? 'border-blue-500 bg-blue-500/10' : 'border-white/5 bg-white/5 hover:bg-white/10'}`}
-                        >
-                          <div className="flex justify-between items-center mb-2">
-                            <span className="text-2xl font-black text-white">{route.legs[0].duration.text}</span>
-                            <span className="text-[11px] font-black text-green-500 uppercase tracking-widest">{route.legs[0].distance.text}</span>
-                          </div>
-                          <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-[0.2em]">via {route.summary}</p>
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                        <p className="text-[11px] font-bold text-zinc-500 uppercase tracking-[0.2em]">via {route.summary}</p>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
