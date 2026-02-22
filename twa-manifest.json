@@ -1,5 +1,6 @@
 {
     "packageId": "com.manuk.androidauto",
+    "packageName": "com.manuk.androidauto",
     "name": "Android Auto Dashboard",
     "shortName": "Dashboard",
     "host": "androidauto-rust.vercel.app",
