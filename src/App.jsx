@@ -94,27 +94,7 @@ const Visualizer = ({ isPlaying }) => {
 
 import LandingPage from './LandingPage';
 
-export default function App() {
-  // --- Routing State ---
-  const [currentRoute, setCurrentRoute] = useState(window.location.hash === '#/app' ? 'app' : 'landing');
-
-  useEffect(() => {
-    const handleHashChange = () => {
-      setCurrentRoute(window.location.hash === '#/app' ? 'app' : 'landing');
-    };
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
-
-  const navigateToApp = () => {
-    window.location.hash = '/app';
-    setCurrentRoute('app');
-  };
-
-  if (currentRoute === 'landing') {
-    return <LandingPage onEnterApp={navigateToApp} />;
-  }
-
+function Dashboard() {
   // --- Auth & Config State ---
   const [spotifyToken, setSpotifyToken] = useState(null);
   const tokenRef = useRef(null);
@@ -1293,9 +1273,32 @@ export default function App() {
       </AnimatePresence>
 
       <DeviceSettings show={showSettings} onClose={() => setShowSettings(false)} profile={deviceProfile} setProfile={setDeviceProfile} />
-
     </div>
   );
+}
+
+export default function App() {
+  // --- Routing State ---
+  const [currentRoute, setCurrentRoute] = useState(window.location.hash === '#/app' ? 'app' : 'landing');
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      setCurrentRoute(window.location.hash === '#/app' ? 'app' : 'landing');
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  const navigateToApp = () => {
+    window.location.hash = '/app';
+    setCurrentRoute('app');
+  };
+
+  if (currentRoute === 'landing') {
+    return <LandingPage onEnterApp={navigateToApp} />;
+  }
+
+  return <Dashboard />;
 }
 
 function DeviceSettings({ show, onClose, profile, setProfile }) {
